@@ -30,7 +30,7 @@ import type {
 import { scoreFormSchema, type scoreFormSchemaType } from "@/lib/zod/forms";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "convex/react";
-import { Award, ExternalLink, Send } from "lucide-react";
+import { Award, ExternalLink, Loader2, Send } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -77,6 +77,7 @@ function ScoringPage() {
     Project,
     "scores" | "hasPresented"
   > | null>(null);
+  const [submittingScore, setSubmittingScore] = useState<boolean>(false);
 
   const form = useForm<scoreFormSchemaType>({
     resolver: zodResolver(scoreFormSchema),
@@ -123,6 +124,8 @@ function ScoringPage() {
     }
 
     try {
+      setSubmittingScore(true);
+
       const { success, message } = await submitScore({
         projectDevpostId: selectedProject.devpostId,
         criteria,
@@ -141,6 +144,8 @@ function ScoringPage() {
       console.error("Failed to submit score:", err);
 
       return toast(genericErrMsg);
+    } finally {
+      setSubmittingScore(false);
     }
   };
 
@@ -309,9 +314,16 @@ function ScoringPage() {
                           type="submit"
                           size="lg"
                           className="w-full h-11 text-md font-medium cursor-pointer"
+                          disabled={submittingScore}
                         >
-                          <Send className="h-5 w-5 mr-1" />
-                          Submit Score
+                          {!submittingScore ? (
+                            <>
+                              <Send className="h-5 w-5 mr-1" />
+                              Submit Score
+                            </>
+                          ) : (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          )}
                         </Button>
                       </CardContent>
                     </Card>
