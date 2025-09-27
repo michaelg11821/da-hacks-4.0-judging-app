@@ -44,6 +44,7 @@ export const bulkInsertProjects = internalMutation({
         name: project.name,
         scores: project.scores,
         teamMembers: project.teamMembers,
+        hasPresented: false,
       });
     }
 

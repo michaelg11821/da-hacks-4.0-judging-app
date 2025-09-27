@@ -8,10 +8,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/app/components/ui/card";
+import { genericErrMsg } from "@/lib/constants/errorMessages";
 import { api } from "@/lib/convex/_generated/api";
 import { PresentationSlot } from "@/lib/types/presentations";
 import { useMutation, useQuery } from "convex/react";
-import { CheckCircle2, Info, Loader2, Play, Square, Users } from "lucide-react";
+import {
+  CheckCircle2,
+  Info,
+  Loader2,
+  Pause,
+  Play,
+  Square,
+  Users,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import JudgingIndicator from "../components/judging-indicator/judging-indicator";
@@ -29,7 +38,14 @@ import Loading from "../components/ui/loading";
 
 function PresentationsPage() {
   const [presentations, setPresentations] = useState<PresentationSlot[]>();
-  const endedProjectsRef = useRef<Set<string>>(new Set());
+
+  const [startLoading, setStartLoading] = useState<Record<string, boolean>>({});
+  const [pauseLoading, setPauseLoading] = useState<Record<string, boolean>>({});
+  const [resumeLoading, setResumeLoading] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [stopLoading, setStopLoading] = useState<Record<string, boolean>>({});
+
   const [showNoProjectsDialog, setShowNoProjectsDialog] =
     useState<boolean>(false);
 
@@ -37,6 +53,10 @@ function PresentationsPage() {
 
   const beginPresentation = useMutation(api.presentations.beginPresentation);
   const endPresentation = useMutation(api.presentations.endPresentation);
+  const haltPresentation = useMutation(api.presentations.pausePresentation);
+  const unhaltPresentation = useMutation(api.presentations.resumePresentation);
+
+  const endedProjectsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (currentUser && !currentUser.judgingSession) {
@@ -52,7 +72,6 @@ function PresentationsPage() {
         currentUser.judgingSession.presentations.map((slot) => {
           if (
             slot.status === "presenting" &&
-            slot.timerState &&
             !slot.timerState.isPaused &&
             slot.timerState.startedAt
           ) {
@@ -90,6 +109,7 @@ function PresentationsPage() {
         void endPresentation({
           newPresentations,
           projectName: justFinished.projectName,
+          projectDevpostId: justFinished.projectDevpostId,
         });
       }
     }, 1000);
@@ -100,121 +120,225 @@ function PresentationsPage() {
   const startPresentation = async (projectDevpostId: string) => {
     if (!currentUser?.judgingSession) return;
 
-    const newPresentations: PresentationSlot[] =
-      currentUser.judgingSession.presentations.map((slot) =>
-        slot.projectDevpostId === projectDevpostId
-          ? {
-              ...slot,
-              status: "presenting",
-              timerState: {
-                ...slot.timerState,
-                startedAt: new Date().getTime(),
-              },
-            }
-          : slot
-      );
+    setStartLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
-    setPresentations(newPresentations);
+    const sourceSlots =
+      presentations ?? currentUser.judgingSession.presentations;
 
-    const project = newPresentations.find(
-      (p) => p.projectDevpostId === projectDevpostId
+    const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
+      slot.projectDevpostId === projectDevpostId
+        ? {
+            ...slot,
+            status: "presenting",
+            timerState: {
+              ...slot.timerState,
+              startedAt: new Date().getTime(),
+            },
+          }
+        : slot
     );
 
-    if (!project) return toast("Could not find corresponding project.");
+    try {
+      const project = newPresentations.find(
+        (p) => p.projectDevpostId === projectDevpostId
+      );
 
-    const projectName = project.projectName;
+      if (!project) return toast("Could not find corresponding project.");
 
-    const { success, message } = await beginPresentation({
-      newPresentations,
-      projectName,
-    });
+      const projectName = project.projectName;
 
-    if (!success) {
-      const errorMsg = message;
+      const { success, message } = await beginPresentation({
+        newPresentations,
+        projectName,
+      });
 
-      return toast(errorMsg);
+      if (!success) {
+        const errorMsg = message;
+
+        return toast(errorMsg);
+      }
+
+      setPresentations(newPresentations);
+
+      return toast(message);
+    } catch (err: unknown) {
+      console.error("error beginning presentation:", err);
+
+      return toast(genericErrMsg);
+    } finally {
+      setStartLoading((prev) => ({ ...prev, [projectDevpostId]: false }));
     }
-
-    return toast(message);
   };
 
-  //   const pausePresentation = (slotId: string) => {
-  //     setSchedule((prev) =>
-  //       prev.map((slot) =>
-  //         slot.id === slotId && slot.timerState
-  //           ? {
-  //               ...slot,
-  //               timerState: {
-  //                 ...slot.timerState,
-  //                 isPaused: true,
-  //               },
-  //             }
-  //           : slot
-  //       )
-  //     );
-  //   };
+  const pausePresentation = async (projectDevpostId: string) => {
+    if (!currentUser?.judgingSession || !presentations) return;
 
-  //   const resumePresentation = (slotId: string) => {
-  //     setSchedule((prev) =>
-  //       prev.map((slot) =>
-  //         slot.id === slotId && slot.timerState
-  //           ? {
-  //               ...slot,
-  //               timerState: {
-  //                 ...slot.timerState,
-  //                 isPaused: false,
-  //                 startedAt: new Date(
-  //                   Date.now() -
-  //                     (slot.duration * 60 - slot.timerState.remainingSeconds) *
-  //                       1000
-  //                 ),
-  //               },
-  //             }
-  //           : slot
-  //       )
-  //     );
-  //   };
+    setPauseLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
+
+    const sourceSlots =
+      presentations ?? currentUser.judgingSession.presentations;
+
+    const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
+      slot.projectDevpostId === projectDevpostId
+        ? {
+            ...slot,
+            timerState: {
+              ...slot.timerState,
+              isPaused: true,
+              remainingSeconds: slot.timerState.startedAt
+                ? Math.max(
+                    0,
+                    slot.duration * 60 -
+                      Math.floor(
+                        (Date.now() - slot.timerState.startedAt) / 1000
+                      )
+                  )
+                : slot.timerState.remainingSeconds,
+            },
+          }
+        : slot
+    );
+
+    try {
+      const project = newPresentations.find(
+        (p) => p.projectDevpostId === projectDevpostId
+      );
+
+      if (!project) return toast("Could not find corresponding project.");
+
+      const projectName = project.projectName;
+
+      const { success, message } = await haltPresentation({
+        newPresentations,
+        projectName,
+      });
+
+      if (!success) {
+        const errorMsg = message;
+
+        return toast(errorMsg);
+      }
+
+      setPresentations(newPresentations);
+
+      return toast(message);
+    } catch (err: unknown) {
+      console.error("error pausing presentation:", err);
+
+      return toast(genericErrMsg);
+    } finally {
+      setPauseLoading((prev) => ({ ...prev, [projectDevpostId]: false }));
+    }
+  };
+
+  const resumePresentation = async (projectDevpostId: string) => {
+    if (!currentUser?.judgingSession || !presentations) return;
+
+    setResumeLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
+
+    const sourceSlots =
+      presentations ?? currentUser.judgingSession.presentations;
+
+    const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
+      slot.projectDevpostId === projectDevpostId
+        ? {
+            ...slot,
+            timerState: {
+              ...slot.timerState,
+              isPaused: false,
+              startedAt: new Date(
+                Date.now() -
+                  (slot.duration * 60 - slot.timerState.remainingSeconds) * 1000
+              ).getTime(),
+            },
+          }
+        : slot
+    );
+
+    try {
+      const project = newPresentations.find(
+        (p) => p.projectDevpostId === projectDevpostId
+      );
+
+      if (!project) return toast("Could not find corresponding project.");
+
+      const projectName = project.projectName;
+
+      const { success, message } = await unhaltPresentation({
+        newPresentations,
+        projectName,
+      });
+
+      if (!success) {
+        const errorMsg = message;
+
+        return toast(errorMsg);
+      }
+
+      setPresentations(newPresentations);
+
+      return toast(message);
+    } catch (err: unknown) {
+      console.error("error pausing presentation:", err);
+
+      return toast(genericErrMsg);
+    } finally {
+      setResumeLoading((prev) => ({ ...prev, [projectDevpostId]: false }));
+    }
+  };
 
   const stopPresentation = async (projectDevpostId: string) => {
     if (!currentUser?.judgingSession) return;
 
-    const newPresentations: PresentationSlot[] =
-      currentUser.judgingSession.presentations.map((slot) =>
-        slot.projectDevpostId === projectDevpostId
-          ? {
-              ...slot,
-              status: "completed",
-              timerState: {
-                remainingSeconds: 0,
-                isPaused: true,
-                startedAt: undefined,
-              },
-            }
-          : slot
-      );
+    setStopLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
-    setPresentations(newPresentations);
+    const sourceSlots =
+      presentations ?? currentUser.judgingSession.presentations;
 
-    const project = newPresentations.find(
-      (p) => p.projectDevpostId === projectDevpostId
+    const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
+      slot.projectDevpostId === projectDevpostId
+        ? {
+            ...slot,
+            status: "completed",
+            timerState: {
+              remainingSeconds: 0,
+              isPaused: true,
+            },
+          }
+        : slot
     );
 
-    if (!project) throw new Error("Could not find corresponding project.");
+    try {
+      const project = newPresentations.find(
+        (p) => p.projectDevpostId === projectDevpostId
+      );
 
-    const projectName = project.projectName;
+      if (!project) throw new Error("Could not find corresponding project.");
 
-    const { success, message } = await endPresentation({
-      newPresentations,
-      projectName,
-    });
+      const projectName = project.projectName;
 
-    if (!success) {
-      const errorMsg = message;
+      const { success, message } = await endPresentation({
+        newPresentations,
+        projectName,
+        projectDevpostId,
+      });
 
-      return toast(errorMsg);
+      if (!success) {
+        const errorMsg = message;
+
+        return toast(errorMsg);
+      }
+
+      setPresentations(newPresentations);
+
+      return toast(message);
+    } catch (err: unknown) {
+      console.error("error stopping presentation:", err);
+
+      return toast(genericErrMsg);
+    } finally {
+      setStopLoading((prev) => ({ ...prev, [projectDevpostId]: false }));
     }
-
-    return toast(message);
   };
 
   const formatTime = (seconds: number) => {
@@ -359,33 +483,97 @@ function PresentationsPage() {
                                   startPresentation(slot.projectDevpostId)
                                 }
                                 size="lg"
-                                className="w-full sm:w-auto cursor-pointer select-none"
-                                disabled={!currentUser.judgingSession.isActive}
+                                className="w-full sm:w-auto cursor-pointer select-none min-w-40"
+                                disabled={
+                                  !currentUser.judgingSession.isActive ||
+                                  !!startLoading[slot.projectDevpostId]
+                                }
                               >
-                                <Play className="h-4 w-4 mr-2" />
-                                Start
+                                {!startLoading[slot.projectDevpostId] ? (
+                                  <>
+                                    <Play className="h-4 w-4 mr-2" />
+                                    Start
+                                  </>
+                                ) : (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                )}
                               </Button>
                             )}
 
                             {slot.status === "presenting" &&
                               slot.timerState && (
-                                <Button
-                                  variant="destructive"
-                                  onClick={() =>
-                                    stopPresentation(slot.projectDevpostId)
-                                  }
-                                  size="lg"
-                                  className="w-full sm:w-auto cursor-pointer"
-                                >
-                                  <Square className="h-4 w-4 mr-2" />
-                                  Complete
-                                </Button>
+                                <>
+                                  {slot.timerState.isPaused ? (
+                                    <Button
+                                      onClick={() =>
+                                        resumePresentation(
+                                          slot.projectDevpostId
+                                        )
+                                      }
+                                      size="lg"
+                                      className="w-full sm:w-auto cursor-pointer min-w-40"
+                                      disabled={
+                                        !!resumeLoading[slot.projectDevpostId]
+                                      }
+                                    >
+                                      {!resumeLoading[slot.projectDevpostId] ? (
+                                        <>
+                                          <Play className="h-4 w-4 mr-2" />
+                                          Resume
+                                        </>
+                                      ) : (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      )}
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      onClick={() =>
+                                        pausePresentation(slot.projectDevpostId)
+                                      }
+                                      size="lg"
+                                      className="w-full sm:w-auto cursor-pointer min-w-40"
+                                      disabled={
+                                        !!pauseLoading[slot.projectDevpostId]
+                                      }
+                                    >
+                                      {!pauseLoading[slot.projectDevpostId] ? (
+                                        <>
+                                          <Pause className="h-4 w-4 mr-2" />
+                                          Pause
+                                        </>
+                                      ) : (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      )}
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="destructive"
+                                    onClick={() =>
+                                      stopPresentation(slot.projectDevpostId)
+                                    }
+                                    size="lg"
+                                    className="w-full sm:w-auto cursor-pointer min-w-40"
+                                    disabled={
+                                      !!stopLoading[slot.projectDevpostId]
+                                    }
+                                  >
+                                    {!stopLoading[slot.projectDevpostId] ? (
+                                      <>
+                                        <Square className="h-4 w-4 mr-2" />
+                                        Complete
+                                      </>
+                                    ) : (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    )}
+                                  </Button>
+                                </>
                               )}
 
                             {slot.status === "completed" && (
                               <Badge
                                 variant="secondary"
-                                className="px-4 py-3 select-none w-full sm:w-auto text-center"
+                                className="px-4 py-3 w-full sm:w-auto min-w-40 "
                               >
                                 Completed
                               </Badge>
