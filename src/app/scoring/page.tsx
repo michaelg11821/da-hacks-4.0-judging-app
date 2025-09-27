@@ -27,7 +27,7 @@ import type {
 import { scoreFormSchema, type scoreFormSchemaType } from "@/lib/zod/forms";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "convex/react";
-import { Award, ExternalLink, Info, Send } from "lucide-react";
+import { Award, ExternalLink, Info, Loader2, Send } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -85,6 +85,7 @@ function ScoringPage() {
   > | null>(null);
   const [showNoProjectsDialog, setShowNoProjectsDialog] =
     useState<boolean>(false);
+  const [submittingScore, setSubmittingScore] = useState<boolean>(false);
 
   const form = useForm<scoreFormSchemaType>({
     resolver: zodResolver(scoreFormSchema),
@@ -92,6 +93,7 @@ function ScoringPage() {
   });
 
   const currentUser = useQuery(api.user.currentUser);
+
   const submitScore = useMutation(api.judging.submitScore);
 
   useEffect(() => {
@@ -114,6 +116,8 @@ function ScoringPage() {
     if (!project)
       return toast("Could not find the selected project. Please try again.");
 
+    form.reset();
+
     return setSelectedProject(project);
   };
 
@@ -126,13 +130,13 @@ function ScoringPage() {
       return toast("Please wait for the current presentation to finish.");
     }
 
-    if (
-      currentUser.judgingSession.previousProjectName !== selectedProject.name
-    ) {
+    if (selectedProject.hasPresented) {
       return toast("Please only submit scores when teams finish presenting.");
     }
 
     try {
+      setSubmittingScore(true);
+
       const { success, message } = await submitScore({
         projectDevpostId: selectedProject.devpostId,
         criteria,
@@ -148,9 +152,11 @@ function ScoringPage() {
 
       return toast(message);
     } catch (err: unknown) {
-      console.error("Failed to submit score:", err);
+      console.error("failed to submit score:", err);
 
       return toast(genericErrMsg);
+    } finally {
+      setSubmittingScore(false);
     }
   };
 
@@ -344,9 +350,16 @@ function ScoringPage() {
                           type="submit"
                           size="lg"
                           className="w-full h-11 text-md font-medium cursor-pointer"
+                          disabled={submittingScore}
                         >
-                          <Send className="h-5 w-5 mr-1" />
-                          Submit Score
+                          {!submittingScore ? (
+                            <>
+                              <Send className="h-5 w-5 mr-1" />
+                              Submit Score
+                            </>
+                          ) : (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          )}
                         </Button>
                       </CardContent>
                     </Card>

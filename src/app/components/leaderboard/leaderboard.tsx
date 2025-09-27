@@ -132,20 +132,13 @@ function Leaderboard() {
 
   return (
     <div className="space-y-4">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold mb-2">🏆 Leaderboard</h2>
-        <p className="text-muted-foreground">
-          Live rankings based on judge scores
-        </p>
-      </div>
-
       {rankedProjects.map((item, index) => {
         const rank = index + 1;
         const { project, averageScore, totalJudges, breakdown } = item;
 
         return (
           <Card
-            key={project._id}
+            key={project.devpostId}
             className={`${rank <= 3 && breakdown ? "ring-2 ring-primary/20 bg-gradient-to-r from-primary/5 to-background" : ""}`}
           >
             <CardHeader>
@@ -227,7 +220,7 @@ function Leaderboard() {
       {rankedProjects.length === 0 && (
         <Card>
           <CardContent className="text-center py-8">
-            <Trophy className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+            <Trophy className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">
               No projects have been scored yet.
             </p>

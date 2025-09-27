@@ -15,6 +15,8 @@ import Loading from "../components/ui/loading";
 
 function AdminPage() {
   const [creatingGroups, setCreatingGroups] = useState<boolean>(false);
+  const [judgingStatusChanging, setJudgingStatusChanging] =
+    useState<boolean>(false);
 
   const currentUser = useQuery(api.user.currentUser);
   const groups = useQuery(api.judging.getGroups);
@@ -25,28 +27,48 @@ function AdminPage() {
   const createGroups = useAction(api.judging.createGroups);
 
   const handleBeginJudging = async () => {
-    const { success, message } = await beginJudging({
-      cursor: null,
-      numItems: 50,
-    });
+    setJudgingStatusChanging(true);
 
-    if (!success) {
-      const errorMsg = message;
+    try {
+      const { success, message } = await beginJudging({
+        cursor: null,
+        numItems: 50,
+      });
 
-      return toast(errorMsg);
+      if (!success) {
+        const errorMsg = message;
+
+        throw new Error(errorMsg);
+      }
+    } catch (err: unknown) {
+      console.error("error starting judging:", err);
+
+      return toast(genericErrMsg);
+    } finally {
+      setJudgingStatusChanging(false);
     }
   };
 
   const handleEndJudging = async () => {
-    const { success, message } = await endJudging({
-      cursor: null,
-      numItems: 50,
-    });
+    setJudgingStatusChanging(true);
 
-    if (!success) {
-      const errorMsg = message;
+    try {
+      const { success, message } = await endJudging({
+        cursor: null,
+        numItems: 50,
+      });
 
-      return toast(errorMsg);
+      if (!success) {
+        const errorMsg = message;
+
+        throw new Error(errorMsg);
+      }
+    } catch (err: unknown) {
+      console.error("Error ending judging:", err);
+
+      return toast(genericErrMsg);
+    } finally {
+      setJudgingStatusChanging(false);
     }
   };
 
@@ -54,17 +76,17 @@ function AdminPage() {
     setCreatingGroups(true);
 
     try {
-      const result = await createGroups();
+      const { success, message } = await createGroups();
 
-      if (!result.success) {
-        const errorMsg = result.message;
+      if (!success) {
+        const errorMsg = message;
 
         throw new Error(errorMsg);
       }
 
-      return toast(result.message);
+      return toast(message);
     } catch (err: unknown) {
-      console.error("Error creating groups:", err);
+      console.error("error creating groups:", err);
 
       return toast(genericErrMsg);
     } finally {
@@ -86,21 +108,33 @@ function AdminPage() {
             <Button
               onClick={handleBeginJudging}
               size="sm"
-              className="shadow-sm cursor-pointer"
-              disabled={creatingGroups}
+              className="shadow-sm cursor-pointer self-center min-w-40"
+              disabled={judgingStatusChanging}
             >
-              <Play className="h-4 w-4 mr-2" />
-              Begin Judging
+              {!judgingStatusChanging ? (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  Begin Judging
+                </>
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
             </Button>
           ) : (
             <Button
               onClick={handleEndJudging}
               size="sm"
               variant="destructive"
-              className="shadow-sm cursor-pointer"
+              className="shadow-sm cursor-pointer self-center min-w-40"
             >
-              <Square className="h-4 w-4 mr-2" />
-              End Judging
+              {!judgingStatusChanging ? (
+                <>
+                  <Square className="h-4 w-4 mr-2" />
+                  End Judging
+                </>
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
             </Button>
           )}
 
@@ -193,6 +227,12 @@ function AdminPage() {
             </div>
           </div>
 
+          <div id="leaderboard" className="mb-4">
+            <h2 className="text-2xl font-bold">Leaderboard</h2>
+            <p className="text-muted-foreground">
+              Live rankings based on judge scores
+            </p>
+          </div>
           <Leaderboard />
         </div>
       </main>
