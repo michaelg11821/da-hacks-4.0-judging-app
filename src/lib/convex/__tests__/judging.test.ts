@@ -273,7 +273,7 @@ describe("judging status", () => {
 
       const result = await asDirector.mutation(api.judging.beginJudging, {
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       expect(result.success).toBe(true);
@@ -326,7 +326,7 @@ describe("judging status", () => {
 
       await asDirector.mutation(api.judging.beginJudging, {
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       const mockUsers = await t.run(async (ctx) => {
@@ -386,7 +386,7 @@ describe("judging status", () => {
 
       const result = await asDirector.mutation(api.judging.beginJudging, {
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       expect(result.success).toBe(false);
@@ -435,12 +435,12 @@ describe("judging status", () => {
 
       await asDirector.mutation(api.judging.beginJudging, {
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       const result = await asDirector.mutation(api.judging.endJudging, {
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       expect(result.success).toBe(true);
@@ -487,12 +487,12 @@ describe("judging status", () => {
 
       await asDirector.mutation(api.judging.beginJudging, {
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       await asDirector.mutation(api.judging.endJudging, {
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       const mockUsers = await t.run(async (ctx) => {
