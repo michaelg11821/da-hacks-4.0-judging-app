@@ -32,7 +32,7 @@ function AdminPage() {
     try {
       const { success, message } = await beginJudging({
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       if (!success) {
@@ -55,7 +55,7 @@ function AdminPage() {
     try {
       const { success, message } = await endJudging({
         cursor: null,
-        numItems: 50,
+        numItems: 100,
       });
 
       if (!success) {
