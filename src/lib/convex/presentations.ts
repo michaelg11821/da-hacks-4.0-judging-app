@@ -116,7 +116,7 @@ export const beginPresentation = mutation({
       const durationMs = startedPresentation.duration * 60 * 1000;
       const scheduledTime =
         startedPresentation.timerState.startedAt + durationMs;
-      // Add 2 second buffer so frontend can show "0:00" and "Completing..." smoothly
+
       const delayMs = Math.max(0, scheduledTime - Date.now() + 2000);
 
       await ctx.scheduler.runAfter(
@@ -361,7 +361,7 @@ export const resumePresentation = mutation({
       const durationMs = resumedPresentation.duration * 60 * 1000;
       const scheduledTime =
         resumedPresentation.timerState.startedAt + durationMs;
-      // Add 2 second buffer so frontend can show "0:00" and "Completing..." smoothly
+
       const delayMs = Math.max(0, scheduledTime - Date.now() + 2000);
 
       console.log(
@@ -550,7 +550,6 @@ export const autoCompletePresentation = internalMutation({
       : 0;
     const remaining = Math.max(0, currentPresentation.duration * 60 - elapsed);
 
-    // Allow completion if within 3 seconds of scheduled time (includes buffer)
     if (remaining > 3) {
       return;
     }
