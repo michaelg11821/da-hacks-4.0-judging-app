@@ -31,6 +31,10 @@ function PresentationStatus() {
       return;
     }
 
+    if (prevPresentationsRef.current === presentations) {
+      return;
+    }
+
     const prevPresenting = prevPresentationsRef.current.find(
       (p) => p.status === "presenting"
     );

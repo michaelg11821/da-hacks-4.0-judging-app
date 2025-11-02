@@ -111,11 +111,17 @@ function PresentationsPage() {
       ) {
         endedProjectsRef.current.add(justFinished.projectDevpostId);
 
-        void endPresentation({
+        endPresentation({
           newPresentations,
           projectName: justFinished.projectName,
           projectDevpostId: justFinished.projectDevpostId,
-        });
+        })
+          .then(() => {
+            setPresentations(undefined);
+          })
+          .catch((err) => {
+            console.error("Error ending presentation:", err);
+          });
       }
     }, 1000);
 
