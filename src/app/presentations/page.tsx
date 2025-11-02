@@ -64,6 +64,7 @@ function PresentationsPage() {
   const previousPresentationsRef = useRef<PresentationSlot[] | undefined>(
     undefined
   );
+  const manuallyStoppedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (currentUser && !currentUser.judgingSession) {
@@ -87,7 +88,7 @@ function PresentationsPage() {
           previousSlot &&
           previousSlot.status === "presenting" &&
           currentSlot.status === "completed" &&
-          !stopLoading[currentSlot.projectDevpostId]
+          !manuallyStoppedRef.current.has(currentSlot.projectDevpostId)
         ) {
           toast.success(`Presentation for ${currentSlot.projectName} ended.`);
         }
@@ -95,7 +96,7 @@ function PresentationsPage() {
     }
 
     previousPresentationsRef.current = currentPresentations;
-  }, [currentUser, stopLoading]);
+  }, [currentUser]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -309,6 +310,8 @@ function PresentationsPage() {
   const stopPresentation = async (projectDevpostId: string) => {
     if (!currentUser?.judgingSession) return;
 
+    manuallyStoppedRef.current.add(projectDevpostId);
+
     setStopLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
     const sourceSlots =
@@ -345,14 +348,22 @@ function PresentationsPage() {
       if (!success) {
         const errorMsg = message;
 
+        manuallyStoppedRef.current.delete(projectDevpostId);
+
         return toast.error(errorMsg);
       }
 
       setPresentations(newPresentations);
 
+      setTimeout(() => {
+        manuallyStoppedRef.current.delete(projectDevpostId);
+      }, 3000);
+
       return toast.success(message);
     } catch (err: unknown) {
       console.error("error stopping presentation:", err);
+
+      manuallyStoppedRef.current.delete(projectDevpostId);
 
       return toast.error(genericErrMsg);
     } finally {
