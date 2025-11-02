@@ -111,17 +111,11 @@ function PresentationsPage() {
       ) {
         endedProjectsRef.current.add(justFinished.projectDevpostId);
 
-        endPresentation({
+        void endPresentation({
           newPresentations,
           projectName: justFinished.projectName,
           projectDevpostId: justFinished.projectDevpostId,
-        })
-          .then(() => {
-            setPresentations(undefined);
-          })
-          .catch((err) => {
-            console.error("Error ending presentation:", err);
-          });
+        });
       }
     }, 1000);
 
@@ -175,6 +169,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
+
+      return toast.success(message);
     } catch (err: unknown) {
       console.error("error beginning presentation:", err);
 
@@ -234,6 +230,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
+
+      return toast.info(message);
     } catch (err: unknown) {
       console.error("error pausing presentation:", err);
 
@@ -288,6 +286,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
+
+      return toast.info(message);
     } catch (err: unknown) {
       console.error("error resuming presentation:", err);
 
@@ -340,6 +340,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
+
+      return toast.success(message);
     } catch (err: unknown) {
       console.error("error stopping presentation:", err);
 
