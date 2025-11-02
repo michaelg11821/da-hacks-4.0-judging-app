@@ -1,1 +1,1 @@
-export const defaultDurationMinutes = 0.05;
+export const defaultDurationMinutes = 5;
