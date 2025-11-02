@@ -117,7 +117,7 @@ export const beginPresentation = mutation({
       const scheduledTime =
         startedPresentation.timerState.startedAt + durationMs;
 
-      const delayMs = Math.max(0, scheduledTime - Date.now() + 2000);
+      const delayMs = Math.max(0, scheduledTime - Date.now() + 500);
 
       await ctx.scheduler.runAfter(
         delayMs,
@@ -362,7 +362,7 @@ export const resumePresentation = mutation({
       const scheduledTime =
         resumedPresentation.timerState.startedAt + durationMs;
 
-      const delayMs = Math.max(0, scheduledTime - Date.now() + 2000);
+      const delayMs = Math.max(0, scheduledTime - Date.now() + 500);
 
       console.log(
         `[resumePresentation] Scheduling auto-complete for ${args.projectName} in ${delayMs}ms (${Math.floor(delayMs / 1000)}s)`
@@ -550,7 +550,7 @@ export const autoCompletePresentation = internalMutation({
       : 0;
     const remaining = Math.max(0, currentPresentation.duration * 60 - elapsed);
 
-    if (remaining > 3) {
+    if (remaining > 1) {
       return;
     }
 
