@@ -80,7 +80,7 @@ const createDefaultValues = (): Criteria => {
 
 function ScoringPage() {
   const [selectedProject, setSelectedProject] = useState<Omit<
-    Project,
+    Omit<Project, "hasPresented">,
     "scores"
   > | null>(null);
   const [showNoProjectsDialog, setShowNoProjectsDialog] =
