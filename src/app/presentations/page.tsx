@@ -425,6 +425,9 @@ function PresentationsPage() {
 
                   const isActive = slot.status === "presenting";
                   const isCompleted = slot.status === "completed";
+                  const hasActivePresentation = presentations.some(
+                    (p) => p.status === "presenting"
+                  );
 
                   return (
                     <Card
@@ -486,7 +489,8 @@ function PresentationsPage() {
                                 className="w-full sm:w-auto cursor-pointer select-none min-w-40"
                                 disabled={
                                   !currentUser.judgingSession.isActive ||
-                                  !!startLoading[slot.projectDevpostId]
+                                  !!startLoading[slot.projectDevpostId] ||
+                                  hasActivePresentation
                                 }
                               >
                                 {!startLoading[slot.projectDevpostId] ? (

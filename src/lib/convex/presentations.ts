@@ -39,6 +39,17 @@ export const beginPresentation = mutation({
       };
     }
 
+    const activePresentation = args.newPresentations.find(
+      (p) => p.status === "presenting" && p.projectName !== args.projectName
+    );
+
+    if (activePresentation) {
+      return {
+        success: false,
+        message: `Cannot start ${args.projectName}. ${activePresentation.projectName} is currently presenting.`,
+      };
+    }
+
     await ctx.db.patch(user._id, {
       judgingSession: {
         ...user.judgingSession,
@@ -251,11 +262,23 @@ export const resumePresentation = mutation({
       };
     }
 
+    // Check if there's already a different active presentation in this group
+    const activePresentation = args.newPresentations.find(
+      (p) => p.status === "presenting" && p.projectName !== args.projectName
+    );
+
+    if (activePresentation) {
+      return {
+        success: false,
+        message: `Cannot resume ${args.projectName}. ${activePresentation.projectName} is currently presenting.`,
+      };
+    }
+
     await ctx.db.patch(user._id, {
       judgingSession: {
         ...user.judgingSession,
         presentations: args.newPresentations,
-        currentProjectPresenting: undefined,
+        currentProjectPresenting: args.projectName,
       },
     });
 
@@ -269,7 +292,7 @@ export const resumePresentation = mutation({
           judgingSession: {
             ...judge.judgingSession,
             presentations: args.newPresentations,
-            currentProjectPresenting: undefined,
+            currentProjectPresenting: args.projectName,
           },
         });
       })
