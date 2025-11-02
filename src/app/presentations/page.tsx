@@ -125,7 +125,7 @@ function PresentationsPage() {
   const startPresentation = async (projectDevpostId: string) => {
     if (!currentUser?.judgingSession) return;
 
-    if (incompleteScoresData?.hasIncompleteScores) {
+    if (incompleteScoresData && incompleteScoresData.hasIncompleteScores) {
       setShowIncompleteScoresDialog(true);
       return;
     }
