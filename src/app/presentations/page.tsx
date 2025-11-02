@@ -153,7 +153,7 @@ function PresentationsPage() {
         (p) => p.projectDevpostId === projectDevpostId
       );
 
-      if (!project) return toast("Could not find corresponding project.");
+      if (!project) return toast.error("Could not find corresponding project.");
 
       const projectName = project.projectName;
 
@@ -165,14 +165,14 @@ function PresentationsPage() {
       if (!success) {
         const errorMsg = message;
 
-        return toast(errorMsg);
+        return toast.error(errorMsg);
       }
 
       setPresentations(newPresentations);
     } catch (err: unknown) {
       console.error("error beginning presentation:", err);
 
-      return toast(genericErrMsg);
+      return toast.error(genericErrMsg);
     } finally {
       setStartLoading((prev) => ({ ...prev, [projectDevpostId]: false }));
     }
@@ -212,7 +212,7 @@ function PresentationsPage() {
         (p) => p.projectDevpostId === projectDevpostId
       );
 
-      if (!project) return toast("Could not find corresponding project.");
+      if (!project) return toast.error("Could not find corresponding project.");
 
       const projectName = project.projectName;
 
@@ -224,14 +224,14 @@ function PresentationsPage() {
       if (!success) {
         const errorMsg = message;
 
-        return toast(errorMsg);
+        return toast.error(errorMsg);
       }
 
       setPresentations(newPresentations);
     } catch (err: unknown) {
       console.error("error pausing presentation:", err);
 
-      return toast(genericErrMsg);
+      return toast.error(genericErrMsg);
     } finally {
       setPauseLoading((prev) => ({ ...prev, [projectDevpostId]: false }));
     }
@@ -266,7 +266,7 @@ function PresentationsPage() {
         (p) => p.projectDevpostId === projectDevpostId
       );
 
-      if (!project) return toast("Could not find corresponding project.");
+      if (!project) return toast.error("Could not find corresponding project.");
 
       const projectName = project.projectName;
 
@@ -278,14 +278,14 @@ function PresentationsPage() {
       if (!success) {
         const errorMsg = message;
 
-        return toast(errorMsg);
+        return toast.error(errorMsg);
       }
 
       setPresentations(newPresentations);
     } catch (err: unknown) {
       console.error("error resuming presentation:", err);
 
-      return toast(genericErrMsg);
+      return toast.error(genericErrMsg);
     } finally {
       setResumeLoading((prev) => ({ ...prev, [projectDevpostId]: false }));
     }
@@ -330,14 +330,14 @@ function PresentationsPage() {
       if (!success) {
         const errorMsg = message;
 
-        return toast(errorMsg);
+        return toast.error(errorMsg);
       }
 
       setPresentations(newPresentations);
     } catch (err: unknown) {
       console.error("error stopping presentation:", err);
 
-      return toast(genericErrMsg);
+      return toast.error(genericErrMsg);
     } finally {
       setStopLoading((prev) => ({ ...prev, [projectDevpostId]: false }));
     }

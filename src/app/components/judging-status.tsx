@@ -20,9 +20,9 @@ function JudgingStatus() {
 
     if (isActive !== prevIsActiveRef.current) {
       if (isActive === true) {
-        toast("Judging has began.");
+        toast.success("Judging has began.");
       } else if (isActive === false) {
-        toast("Judging has ended.");
+        toast.info("Judging has ended.");
       }
 
       prevIsActiveRef.current = isActive;

@@ -31,7 +31,7 @@ function Leaderboard() {
   }
 
   if (projects === null) {
-    toast("Error getting projects. Please refresh.");
+    toast.error("Error getting projects. Please refresh.");
 
     return null;
   }

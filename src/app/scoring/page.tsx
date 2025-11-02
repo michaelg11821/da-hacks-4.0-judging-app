@@ -114,7 +114,9 @@ function ScoringPage() {
     );
 
     if (!project)
-      return toast("Could not find the selected project. Please try again.");
+      return toast.error(
+        "Could not find the selected project. Please try again."
+      );
 
     form.reset();
 
@@ -137,16 +139,16 @@ function ScoringPage() {
       if (!success) {
         const errorMsg = message;
 
-        return toast(errorMsg);
+        return toast.error(errorMsg);
       }
 
       form.reset();
 
-      return toast(message);
+      return toast.success(message);
     } catch (err: unknown) {
       console.error("failed to submit score:", err);
 
-      return toast(genericErrMsg);
+      return toast.error(genericErrMsg);
     } finally {
       setSubmittingScore(false);
     }

@@ -39,16 +39,20 @@ function PresentationStatus() {
     );
 
     if (currentPresenting && !prevPresenting) {
-      toast(`Presentation for ${currentPresenting.projectName} has started.`);
+      toast.success(
+        `Presentation for ${currentPresenting.projectName} has started.`
+      );
     } else if (!currentPresenting && prevPresenting) {
-      toast(`Presentation for ${prevPresenting.projectName} has ended.`);
+      toast.info(`Presentation for ${prevPresenting.projectName} has ended.`);
     } else if (
       currentPresenting &&
       prevPresenting &&
       currentPresenting.projectDevpostId !== prevPresenting.projectDevpostId
     ) {
-      toast(`Presentation for ${prevPresenting.projectName} has ended.`);
-      toast(`Presentation for ${currentPresenting.projectName} has started.`);
+      toast.info(`Presentation for ${prevPresenting.projectName} has ended.`);
+      toast.success(
+        `Presentation for ${currentPresenting.projectName} has started.`
+      );
     } else if (
       currentPresenting &&
       prevPresenting &&
@@ -58,9 +62,13 @@ function PresentationStatus() {
       const isPaused = currentPresenting.timerState.isPaused;
 
       if (!wasPaused && isPaused) {
-        toast(`Presentation for ${currentPresenting.projectName} paused.`);
+        toast.warning(
+          `Presentation for ${currentPresenting.projectName} paused.`
+        );
       } else if (wasPaused && !isPaused) {
-        toast(`Presentation for ${currentPresenting.projectName} resumed.`);
+        toast.info(
+          `Presentation for ${currentPresenting.projectName} resumed.`
+        );
       }
     }
 

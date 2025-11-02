@@ -69,7 +69,7 @@ function AdminPage() {
     } catch (err: unknown) {
       console.error("error starting judging:", err);
 
-      return toast(genericErrMsg);
+      return toast.error(genericErrMsg);
     } finally {
       setJudgingStatusChanging(false);
     }
@@ -92,7 +92,7 @@ function AdminPage() {
     } catch (err: unknown) {
       console.error("Error ending judging:", err);
 
-      return toast(genericErrMsg);
+      return toast.error(genericErrMsg);
     } finally {
       setJudgingStatusChanging(false);
     }
@@ -110,11 +110,11 @@ function AdminPage() {
         throw new Error(errorMsg);
       }
 
-      return toast(message);
+      return toast.success(message);
     } catch (err: unknown) {
       console.error("error creating groups:", err);
 
-      return toast(genericErrMsg);
+      return toast.error(genericErrMsg);
     } finally {
       setCreatingGroups(false);
     }
