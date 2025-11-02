@@ -147,7 +147,6 @@ export const createGroups = action({
         name: allProjects[i].name,
         teamMembers: allProjects[i].teamMembers,
         devpostUrl: allProjects[i].devpostUrl,
-        hasPresented: false,
       });
     }
 
@@ -423,6 +422,13 @@ export const submitScore = mutation({
         success: false,
         message:
           "This project does not exist. If this is a mistake, contact Michael from the Tech team.",
+      };
+
+    if (!project.hasPresented)
+      return {
+        success: false,
+        message:
+          "Cannot score a project that hasn't presented yet. Please wait for the presentation to finish.",
       };
 
     const newScore: Score = { judgeId: user._id, criteria: args.criteria };

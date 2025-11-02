@@ -126,14 +126,6 @@ function ScoringPage() {
 
     if (!currentUser || !currentUser.judgingSession) return;
 
-    if (currentUser.judgingSession.currentProjectPresenting) {
-      return toast("Please wait for the current presentation to finish.");
-    }
-
-    if (selectedProject.hasPresented) {
-      return toast("Please only submit scores when teams finish presenting.");
-    }
-
     try {
       setSubmittingScore(true);
 
@@ -145,7 +137,7 @@ function ScoringPage() {
       if (!success) {
         const errorMsg = message;
 
-        throw new Error(errorMsg);
+        return toast(errorMsg);
       }
 
       form.reset();

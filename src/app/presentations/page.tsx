@@ -48,8 +48,13 @@ function PresentationsPage() {
 
   const [showNoProjectsDialog, setShowNoProjectsDialog] =
     useState<boolean>(false);
+  const [showIncompleteScoresDialog, setShowIncompleteScoresDialog] =
+    useState<boolean>(false);
 
   const currentUser = useQuery(api.user.currentUser);
+  const incompleteScoresData = useQuery(
+    api.presentations.checkIncompleteScores
+  );
 
   const beginPresentation = useMutation(api.presentations.beginPresentation);
   const endPresentation = useMutation(api.presentations.endPresentation);
@@ -120,6 +125,11 @@ function PresentationsPage() {
   const startPresentation = async (projectDevpostId: string) => {
     if (!currentUser?.judgingSession) return;
 
+    if (incompleteScoresData?.hasIncompleteScores) {
+      setShowIncompleteScoresDialog(true);
+      return;
+    }
+
     setStartLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
     const sourceSlots =
@@ -159,8 +169,6 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
-
-      return toast(message);
     } catch (err: unknown) {
       console.error("error beginning presentation:", err);
 
@@ -220,8 +228,6 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
-
-      return toast(message);
     } catch (err: unknown) {
       console.error("error pausing presentation:", err);
 
@@ -276,10 +282,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
-
-      return toast(message);
     } catch (err: unknown) {
-      console.error("error pausing presentation:", err);
+      console.error("error resuming presentation:", err);
 
       return toast(genericErrMsg);
     } finally {
@@ -330,8 +334,6 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
-
-      return toast(message);
     } catch (err: unknown) {
       console.error("error stopping presentation:", err);
 
@@ -388,9 +390,49 @@ function PresentationsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Dialog
+          open={showIncompleteScoresDialog}
+          onOpenChange={setShowIncompleteScoresDialog}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Info className="h-5 w-5 text-amber-600" />
+                Cannot Start Presentation
+              </DialogTitle>
+              <DialogDescription>
+                All judges must submit scores for presented projects before
+                starting the next presentation.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Missing scores:</p>
+              <div className="space-y-2">
+                {incompleteScoresData?.incompleteProjects.map((proj) => (
+                  <div
+                    key={proj.projectName}
+                    className="rounded-md bg-muted p-3 text-sm"
+                  >
+                    <p className="font-medium mb-1">{proj.projectName}</p>
+                    <p className="text-muted-foreground">
+                      {proj.missingJudges.join(", ")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">OK</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <div className="px-2">
           <div className="max-w-4xl mx-auto">
-            <div className="mb-8 -mt-3">
+            <div className="mb-4 -mt-3">
               <JudgingIndicator />
             </div>
 

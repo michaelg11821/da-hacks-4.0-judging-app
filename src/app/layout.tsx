@@ -1,13 +1,15 @@
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
+import CompletionStatus from "./components/completion-status";
 import { ConvexClientProvider } from "./components/convex-client-provider";
 import JudgingStatus from "./components/judging-status";
 import Nav from "./components/nav/nav";
+import PresentationStatus from "./components/presentation-status";
 import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import "./globals.css";
-import { Analytics } from '@vercel/analytics/next';
 
 const dmSans = DM_Sans({
   variable: "--font-dmsans",
@@ -43,6 +45,8 @@ export default function RootLayout({
               {children}
               <Toaster />
               <JudgingStatus />
+              <PresentationStatus />
+              <CompletionStatus />
               <Analytics />
             </ThemeProvider>
           </body>

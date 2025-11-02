@@ -38,7 +38,6 @@ export const judgingSessionValidator = v.object({
       name: v.string(),
       teamMembers: v.array(v.string()),
       devpostUrl: v.string(),
-      hasPresented: v.boolean(),
     })
   ),
   judges: v.array(v.string()),

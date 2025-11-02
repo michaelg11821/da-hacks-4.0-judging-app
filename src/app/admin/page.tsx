@@ -4,8 +4,17 @@ import { Button } from "@/app/components/ui/button";
 import { genericErrMsg } from "@/lib/constants/errorMessages";
 import { api } from "@/lib/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Loader2, Play, Square, UserCheck, Users } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowUp,
+  CheckCircle2,
+  Loader2,
+  Play,
+  Presentation,
+  Square,
+  UserCheck,
+  Users,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import Leaderboard from "../components/leaderboard/leaderboard";
 import RoleGuard from "../components/role-guard";
@@ -17,14 +26,31 @@ function AdminPage() {
   const [creatingGroups, setCreatingGroups] = useState<boolean>(false);
   const [judgingStatusChanging, setJudgingStatusChanging] =
     useState<boolean>(false);
+  const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
 
   const currentUser = useQuery(api.user.currentUser);
   const groups = useQuery(api.judging.getGroups);
+  const presentationStatus = useQuery(
+    api.presentations.getAllGroupsPresentationStatus
+  );
 
   const beginJudging = useMutation(api.judging.beginJudging);
   const endJudging = useMutation(api.judging.endJudging);
 
   const createGroups = useAction(api.judging.createGroups);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 300);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const handleBeginJudging = async () => {
     setJudgingStatusChanging(true);
@@ -227,6 +253,97 @@ function AdminPage() {
             </div>
           </div>
 
+          {judgingActive && presentationStatus && (
+            <div className="bg-card rounded-lg shadow-sm border">
+              <div className="px-6 py-4 border-b border-b-muted-foreground/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <Presentation className="h-5 w-5" />
+                      Presentation Status
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Track presentation progress across all groups
+                    </p>
+                  </div>
+                  {presentationStatus.allGroupsComplete && (
+                    <Badge className="bg-green-500 hover:bg-green-600">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      All Complete
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="space-y-4">
+                  {presentationStatus.groups.map((group) => (
+                    <Card
+                      key={group.mentorName}
+                      className={
+                        group.allComplete
+                          ? "border-green-500/50 bg-green-50 dark:bg-green-950/20"
+                          : ""
+                      }
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">
+                                {group.mentorName}&apos;s group
+                              </p>
+                              {group.allComplete && (
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span>
+                                Progress: {group.presentedProjects}/
+                                {group.totalProjects}
+                              </span>
+                              {group.currentlyPresenting && (
+                                <Badge variant="outline" className="text-xs">
+                                  <Presentation className="h-3 w-3 mr-1" />
+                                  {group.currentlyPresenting}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold">
+                              {group.totalProjects > 0
+                                ? Math.round(
+                                    (group.presentedProjects /
+                                      group.totalProjects) *
+                                      100
+                                  )
+                                : 0}
+                              %
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <div className="w-full bg-muted rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full transition-all ${
+                                group.allComplete
+                                  ? "bg-green-500"
+                                  : "bg-primary"
+                              }`}
+                              style={{
+                                width: `${group.totalProjects > 0 ? (group.presentedProjects / group.totalProjects) * 100 : 0}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div id="leaderboard" className="mb-4">
             <h2 className="text-2xl font-bold">Leaderboard</h2>
             <p className="text-muted-foreground">
@@ -235,6 +352,17 @@ function AdminPage() {
           </div>
           <Leaderboard />
         </div>
+
+        {showScrollTop && (
+          <Button
+            onClick={scrollToTop}
+            size="icon"
+            className="fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg z-50"
+            aria-label="Scroll to top"
+          >
+            <ArrowUp className="h-5 w-5" />
+          </Button>
+        )}
       </main>
     </RoleGuard>
   );
