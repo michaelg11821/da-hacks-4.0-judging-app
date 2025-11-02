@@ -64,7 +64,7 @@ function AdminPage() {
       if (!success) {
         const errorMsg = message;
 
-        throw new Error(errorMsg);
+        return toast.error(errorMsg);
       }
     } catch (err: unknown) {
       console.error("error starting judging:", err);

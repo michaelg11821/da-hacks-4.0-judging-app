@@ -3,7 +3,7 @@
 import { api } from "@/lib/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { CheckCircle2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -20,9 +20,14 @@ function CompletionStatus() {
   const allProjects = useQuery(api.projectsConvex.listAllProjects);
   const [showDialog, setShowDialog] = useState(false);
   const [completionMessage, setCompletionMessage] = useState("");
+  const hasShownCompletionRef = useRef(false);
 
   useEffect(() => {
     if (!currentUser || !currentUser.judgingSession || !allProjects) {
+      return;
+    }
+
+    if (hasShownCompletionRef.current) {
       return;
     }
 
@@ -30,9 +35,10 @@ function CompletionStatus() {
       const presentations = currentUser.judgingSession.presentations;
       const allComplete = presentations.every((p) => p.status === "completed");
 
-      if (allComplete && presentations.length > 0 && !showDialog) {
+      if (allComplete && presentations.length > 0) {
         setCompletionMessage("All presentations complete!");
         setShowDialog(true);
+        hasShownCompletionRef.current = true;
       }
     }
 
@@ -55,12 +61,13 @@ function CompletionStatus() {
         project.scores.some((score) => score.judgeId === currentUser._id)
       );
 
-      if (allScored && !showDialog) {
+      if (allScored) {
         setCompletionMessage("All scores submitted!");
         setShowDialog(true);
+        hasShownCompletionRef.current = true;
       }
     }
-  }, [currentUser, allProjects, showDialog]);
+  }, [currentUser, allProjects]);
 
   return (
     <Dialog open={showDialog} onOpenChange={setShowDialog}>
