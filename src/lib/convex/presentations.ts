@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { noAuthMsg, notMentorMsg } from "../constants/errorMessages";
-import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { getGroupByMentorName } from "./judging";
 import { getCurrentUser } from "./user";
 import { presentationSlotValidator } from "./validators";
@@ -106,6 +107,28 @@ export const beginPresentation = mutation({
         });
       })
     );
+
+    const startedPresentation = args.newPresentations.find(
+      (p) => p.projectName === args.projectName && p.status === "presenting"
+    );
+
+    if (startedPresentation && startedPresentation.timerState.startedAt) {
+      const durationMs = startedPresentation.duration * 60 * 1000;
+      const scheduledTime =
+        startedPresentation.timerState.startedAt + durationMs;
+      // Add 2 second buffer so frontend can show "0:00" and "Completing..." smoothly
+      const delayMs = Math.max(0, scheduledTime - Date.now() + 2000);
+
+      await ctx.scheduler.runAfter(
+        delayMs,
+        internal.presentations.autoCompletePresentation,
+        {
+          mentorName: user.name ?? "Unknown Mentor",
+          projectDevpostId: startedPresentation.projectDevpostId,
+          projectName: args.projectName,
+        }
+      );
+    }
 
     return {
       success: true,
@@ -295,7 +318,6 @@ export const resumePresentation = mutation({
       };
     }
 
-    // Check if there's already a different active presentation in this group
     const activePresentation = args.newPresentations.find(
       (p) => p.status === "presenting" && p.projectName !== args.projectName
     );
@@ -330,6 +352,32 @@ export const resumePresentation = mutation({
         });
       })
     );
+
+    const resumedPresentation = args.newPresentations.find(
+      (p) => p.projectName === args.projectName && p.status === "presenting"
+    );
+
+    if (resumedPresentation && resumedPresentation.timerState.startedAt) {
+      const durationMs = resumedPresentation.duration * 60 * 1000;
+      const scheduledTime =
+        resumedPresentation.timerState.startedAt + durationMs;
+      // Add 2 second buffer so frontend can show "0:00" and "Completing..." smoothly
+      const delayMs = Math.max(0, scheduledTime - Date.now() + 2000);
+
+      console.log(
+        `[resumePresentation] Scheduling auto-complete for ${args.projectName} in ${delayMs}ms (${Math.floor(delayMs / 1000)}s)`
+      );
+
+      await ctx.scheduler.runAfter(
+        delayMs,
+        internal.presentations.autoCompletePresentation,
+        {
+          mentorName: user.name ?? "Unknown Mentor",
+          projectDevpostId: resumedPresentation.projectDevpostId,
+          projectName: args.projectName,
+        }
+      );
+    }
 
     return {
       success: true,
@@ -456,5 +504,119 @@ export const getAllGroupsPresentationStatus = query({
       groups: groupStatuses,
       allGroupsComplete,
     };
+  },
+});
+
+export const autoCompletePresentation = internalMutation({
+  args: {
+    mentorName: v.string(),
+    projectDevpostId: v.string(),
+    projectName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const mentor = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", "mentor"))
+      .filter((q) => q.eq(q.field("name"), args.mentorName))
+      .first();
+
+    if (!mentor || !mentor.judgingSession) {
+      console.error(
+        `[autoCompletePresentation] mentor ${args.mentorName} not found or has no judging session`
+      );
+      return;
+    }
+
+    const currentPresentation = mentor.judgingSession.presentations.find(
+      (p) => p.projectDevpostId === args.projectDevpostId
+    );
+
+    if (!currentPresentation) {
+      return;
+    }
+
+    if (currentPresentation.status !== "presenting") {
+      return;
+    }
+
+    if (currentPresentation.timerState.isPaused) {
+      return;
+    }
+
+    const elapsed = currentPresentation.timerState.startedAt
+      ? Math.floor(
+          (Date.now() - currentPresentation.timerState.startedAt) / 1000
+        )
+      : 0;
+    const remaining = Math.max(0, currentPresentation.duration * 60 - elapsed);
+
+    // Allow completion if within 3 seconds of scheduled time (includes buffer)
+    if (remaining > 3) {
+      return;
+    }
+
+    const judges = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", "judge"))
+      .collect();
+
+    const judgesInGroup = judges.filter(
+      (judge) => judge.judgingSession?.mentorName === args.mentorName
+    );
+
+    if (judgesInGroup.length === 0) {
+      console.error(
+        `[autoCompletePresentation] No judges found for mentor ${args.mentorName}`
+      );
+      return;
+    }
+
+    const newPresentations = mentor.judgingSession.presentations.map((slot) =>
+      slot.projectDevpostId === args.projectDevpostId
+        ? {
+            ...slot,
+            status: "completed" as const,
+            timerState: {
+              remainingSeconds: 0,
+              isPaused: true,
+            },
+          }
+        : slot
+    );
+
+    await ctx.db.patch(mentor._id, {
+      judgingSession: {
+        ...mentor.judgingSession,
+        presentations: newPresentations,
+        currentProjectPresenting: undefined,
+      },
+    });
+
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_devpostId", (q) =>
+        q.eq("devpostId", args.projectDevpostId)
+      )
+      .first();
+
+    if (project) {
+      await ctx.db.patch(project._id, { hasPresented: true });
+    }
+
+    await Promise.all(
+      judgesInGroup.map((judge) => {
+        if (!judge.judgingSession) {
+          return;
+        }
+
+        return ctx.db.patch(judge._id, {
+          judgingSession: {
+            ...judge.judgingSession,
+            presentations: newPresentations,
+            currentProjectPresenting: undefined,
+          },
+        });
+      })
+    );
   },
 });

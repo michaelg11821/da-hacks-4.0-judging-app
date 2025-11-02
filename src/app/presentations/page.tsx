@@ -61,13 +61,41 @@ function PresentationsPage() {
   const haltPresentation = useMutation(api.presentations.pausePresentation);
   const unhaltPresentation = useMutation(api.presentations.resumePresentation);
 
-  const endedProjectsRef = useRef<Set<string>>(new Set());
+  const previousPresentationsRef = useRef<PresentationSlot[] | undefined>(
+    undefined
+  );
 
   useEffect(() => {
     if (currentUser && !currentUser.judgingSession) {
       setShowNoProjectsDialog(true);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser?.judgingSession) return;
+
+    const currentPresentations = currentUser.judgingSession.presentations;
+    const previousPresentations = previousPresentationsRef.current;
+
+    if (previousPresentations) {
+      for (const currentSlot of currentPresentations) {
+        const previousSlot = previousPresentations.find(
+          (p) => p.projectDevpostId === currentSlot.projectDevpostId
+        );
+
+        if (
+          previousSlot &&
+          previousSlot.status === "presenting" &&
+          currentSlot.status === "completed" &&
+          !stopLoading[currentSlot.projectDevpostId]
+        ) {
+          toast.success(`Presentation for ${currentSlot.projectName} ended.`);
+        }
+      }
+    }
+
+    previousPresentationsRef.current = currentPresentations;
+  }, [currentUser, stopLoading]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -91,7 +119,6 @@ function PresentationsPage() {
                 ...slot.timerState,
                 remainingSeconds: remaining,
               },
-              status: remaining === 0 ? "completed" : slot.status,
             };
           }
 
@@ -99,28 +126,10 @@ function PresentationsPage() {
         });
 
       setPresentations(newPresentations);
-
-      const justFinished = newPresentations.find(
-        (slot) =>
-          slot.status === "completed" && slot.timerState?.remainingSeconds === 0
-      );
-
-      if (
-        justFinished &&
-        !endedProjectsRef.current.has(justFinished.projectDevpostId)
-      ) {
-        endedProjectsRef.current.add(justFinished.projectDevpostId);
-
-        void endPresentation({
-          newPresentations,
-          projectName: justFinished.projectName,
-          projectDevpostId: justFinished.projectDevpostId,
-        });
-      }
-    }, 1000);
+    }, 100);
 
     return () => clearInterval(timer);
-  }, [currentUser, endPresentation]);
+  }, [currentUser]);
 
   const startPresentation = async (projectDevpostId: string) => {
     if (!currentUser?.judgingSession) return;
@@ -503,13 +512,26 @@ function PresentationsPage() {
                             <div className="text-center self-center md:text-right">
                               <div
                                 className={`text-2xl md:text-3xl font-mono font-bold ${
-                                  slot.timerState.remainingSeconds < 60
-                                    ? "text-destructive"
-                                    : "text-accent"
+                                  slot.timerState.remainingSeconds === 0
+                                    ? "text-destructive animate-pulse"
+                                    : slot.timerState.remainingSeconds < 60
+                                      ? "text-destructive"
+                                      : "text-accent"
                                 }`}
                               >
-                                {formatTime(slot.timerState.remainingSeconds)}
+                                {slot.timerState.remainingSeconds === 0 &&
+                                slot.status === "presenting"
+                                  ? "0:00"
+                                  : formatTime(
+                                      slot.timerState.remainingSeconds
+                                    )}
                               </div>
+                              {slot.timerState.remainingSeconds === 0 &&
+                                slot.status === "presenting" && (
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    Completing...
+                                  </div>
+                                )}
                             </div>
                           )}
                         </div>
