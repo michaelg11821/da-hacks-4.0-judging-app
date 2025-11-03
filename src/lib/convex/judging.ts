@@ -3,11 +3,10 @@ import {
   noAuthMsg,
   notDirectorMsg,
   notJudgeMsg,
-  notMentorMsg,
 } from "../constants/errorMessages";
 import { defaultDurationMinutes } from "../constants/presentations";
 import type { Group, JudgingSession, Score } from "../types/judging";
-import type { Role, UserDoc } from "../types/user";
+import type { UserDoc } from "../types/user";
 import { api, internal } from "./_generated/api";
 import {
   action,
@@ -460,12 +459,12 @@ export const getGroupProjects = query({
 
     if (!user) return { success: false, message: noAuthMsg, projects: [] };
 
-    if (user.role !== ("mentor" as Role)) {
-      return { success: false, message: notMentorMsg };
-    }
-
-    if (user.role !== ("judge" as Role)) {
-      return { success: false, message: notJudgeMsg, projects: [] };
+    if (user.role !== "mentor" && user.role !== "judge") {
+      return {
+        success: false,
+        message: "You must be a mentor or judge to access projects.",
+        projects: [],
+      };
     }
 
     if (!user.judgingSession)

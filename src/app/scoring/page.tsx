@@ -127,8 +127,6 @@ function ScoringPage() {
       return;
     }
 
-    console.log(allPresented);
-
     const allScored = groupProjects.projects.every((project) =>
       project.scores.some((score) => score.judgeId === currentUser._id)
     );
