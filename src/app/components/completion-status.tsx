@@ -32,10 +32,19 @@ function CompletionStatus() {
     }
 
     if (currentUser.role === "mentor") {
-      const presentations = currentUser.judgingSession.presentations;
-      const allComplete = presentations.every((p) => p.status === "completed");
+      const assignedProjects = currentUser.judgingSession.projects;
 
-      if (allComplete && presentations.length > 0) {
+      const projectsWithData = assignedProjects
+        .map((ap) => allProjects.find((p) => p.devpostId === ap.devpostId))
+        .filter((p) => p !== undefined);
+
+      if (projectsWithData.length === 0) {
+        return;
+      }
+
+      const allPresented = projectsWithData.every((p) => p.hasPresented);
+
+      if (allPresented) {
         setCompletionMessage("All presentations complete!");
         setShowDialog(true);
         hasShownCompletionRef.current = true;
@@ -49,15 +58,17 @@ function CompletionStatus() {
         .map((ap) => allProjects.find((p) => p.devpostId === ap.devpostId))
         .filter((p) => p !== undefined);
 
-      const presentedProjects = projectsWithScores.filter(
-        (p) => p.hasPresented
-      );
-
-      if (presentedProjects.length === 0) {
+      if (projectsWithScores.length === 0) {
         return;
       }
 
-      const allScored = presentedProjects.every((project) =>
+      const allPresented = projectsWithScores.every((p) => p.hasPresented);
+
+      if (!allPresented) {
+        return;
+      }
+
+      const allScored = projectsWithScores.every((project) =>
         project.scores.some((score) => score.judgeId === currentUser._id)
       );
 
