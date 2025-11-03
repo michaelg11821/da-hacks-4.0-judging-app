@@ -214,7 +214,7 @@ export const endPresentation = mutation({
 
     return {
       success: true,
-      message: `Presentation for ${args.projectName} ended.`,
+      message: `Presentation ended. Please tell your judges to submit scores for ${args.projectName}.`,
     };
   },
 });
