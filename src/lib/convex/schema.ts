@@ -12,7 +12,9 @@ const schema = defineSchema({
     .index("email", ["email"])
     .index("by_role", ["role"]),
   hierarchy: defineTable(hierarchyValidator),
-  projects: defineTable(projectValidator).index("by_devpostId", ["devpostId"]),
+  projects: defineTable(projectValidator)
+    .index("by_devpostId", ["devpostId"])
+    .index("by_hasPresented", ["hasPresented"]),
 });
 
 export default schema;

@@ -27,7 +27,14 @@ import type {
 import { scoreFormSchema, type scoreFormSchemaType } from "@/lib/zod/forms";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "convex/react";
-import { Award, ExternalLink, Info, Loader2, Send } from "lucide-react";
+import {
+  Award,
+  CheckCircle2,
+  ExternalLink,
+  Info,
+  Loader2,
+  Send,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -86,6 +93,8 @@ function ScoringPage() {
   const [showNoProjectsDialog, setShowNoProjectsDialog] =
     useState<boolean>(false);
   const [submittingScore, setSubmittingScore] = useState<boolean>(false);
+  const [showCompletionDialog, setShowCompletionDialog] =
+    useState<boolean>(false);
 
   const form = useForm<scoreFormSchemaType>({
     resolver: zodResolver(scoreFormSchema),
@@ -93,6 +102,7 @@ function ScoringPage() {
   });
 
   const currentUser = useQuery(api.user.currentUser);
+  const groupProjects = useQuery(api.judging.getGroupProjects);
 
   const submitScore = useMutation(api.judging.submitScore);
 
@@ -105,6 +115,26 @@ function ScoringPage() {
       setSelectedProject(null);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser?._id) return;
+
+    if (!groupProjects || !groupProjects.projects) return;
+
+    const allPresented = groupProjects.projects.every((p) => p.hasPresented);
+
+    if (!allPresented) {
+      return;
+    }
+
+    const allScored = groupProjects.projects.every((project) =>
+      project.scores.some((score) => score.judgeId === currentUser._id)
+    );
+
+    if (allScored) {
+      setShowCompletionDialog(true);
+    }
+  }, [currentUser?._id, groupProjects]);
 
   const handleProjectSelect = (devpostId: string) => {
     if (!currentUser?.judgingSession) return;
@@ -184,6 +214,30 @@ function ScoringPage() {
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline">OK</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={showCompletionDialog}
+          onOpenChange={(open) => {
+            if (!open) setShowCompletionDialog(false);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <CheckCircle2 className="h-6 w-6 text-green-600" />
+                Congratulations!
+              </DialogTitle>
+              <DialogDescription className="text-base pt-2">
+                🎉 All scores submitted. Great job!
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button>Close</Button>
               </DialogClose>
             </DialogFooter>
           </DialogContent>

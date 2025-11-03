@@ -50,11 +50,14 @@ function PresentationsPage() {
     useState<boolean>(false);
   const [showIncompleteScoresDialog, setShowIncompleteScoresDialog] =
     useState<boolean>(false);
+  const [showCompletionDialog, setShowCompletionDialog] =
+    useState<boolean>(false);
 
   const currentUser = useQuery(api.user.currentUser);
   const incompleteScoresData = useQuery(
     api.presentations.checkIncompleteScores
   );
+  const groupProjects = useQuery(api.judging.getGroupProjects);
 
   const beginPresentation = useMutation(api.presentations.beginPresentation);
   const endPresentation = useMutation(api.presentations.endPresentation);
@@ -71,6 +74,16 @@ function PresentationsPage() {
       setShowNoProjectsDialog(true);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!groupProjects || !groupProjects.projects) return;
+
+    const allPresented = groupProjects.projects.every((p) => p.hasPresented);
+
+    if (allPresented) {
+      setShowCompletionDialog(true);
+    }
+  }, [groupProjects]);
 
   useEffect(() => {
     if (!currentUser?.judgingSession) return;
@@ -390,7 +403,8 @@ function PresentationsPage() {
     }
   };
 
-  if (currentUser === undefined) return <Loading />;
+  if (currentUser === undefined || groupProjects === undefined)
+    return <Loading />;
 
   return (
     <RoleGuard role="mentor">
@@ -477,6 +491,30 @@ function PresentationsPage() {
                 </DialogFooter>
               </>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={showCompletionDialog}
+          onOpenChange={(open) => {
+            if (!open) setShowCompletionDialog(false);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <CheckCircle2 className="h-6 w-6 text-green-600" />
+                Congratulations!
+              </DialogTitle>
+              <DialogDescription className="text-base pt-2">
+                🎉 All presentations complete. Great job!
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button>Close</Button>
+              </DialogClose>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 

@@ -410,15 +410,8 @@ export const checkIncompleteScores = query({
 
     const presentedProjects = await ctx.db
       .query("projects")
-      .collect()
-      .then((projects) =>
-        projects.filter((p) => {
-          const isInGroup = user.judgingSession!.projects.some(
-            (gp) => gp.devpostId === p.devpostId
-          );
-          return isInGroup && p.hasPresented;
-        })
-      );
+      .withIndex("by_hasPresented", (q) => q.eq("hasPresented", true))
+      .collect();
 
     const judgeIds = group.judges.map((j) => j._id);
     const incompleteProjects: Array<{

@@ -3,10 +3,11 @@ import {
   noAuthMsg,
   notDirectorMsg,
   notJudgeMsg,
+  notMentorMsg,
 } from "../constants/errorMessages";
 import { defaultDurationMinutes } from "../constants/presentations";
 import type { Group, JudgingSession, Score } from "../types/judging";
-import type { UserDoc } from "../types/user";
+import type { Role, UserDoc } from "../types/user";
 import { api, internal } from "./_generated/api";
 import {
   action,
@@ -450,5 +451,47 @@ export const submitScore = mutation({
     }
 
     return { success: true, message: "Successfully submitted score." };
+  },
+});
+
+export const getGroupProjects = query({
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user) return { success: false, message: noAuthMsg, projects: [] };
+
+    if (user.role !== ("mentor" as Role)) {
+      return { success: false, message: notMentorMsg };
+    }
+
+    if (user.role !== ("judge" as Role)) {
+      return { success: false, message: notJudgeMsg, projects: [] };
+    }
+
+    if (!user.judgingSession)
+      return {
+        success: false,
+        message:
+          "You have not been assigned any projects. If this is a mistake, contact Michael from the Tech team.",
+        projects: [],
+      };
+
+    const devpostIds = user.judgingSession.projects.map((p) => p.devpostId);
+
+    const projectPromises = devpostIds.map((devpostId) =>
+      ctx.db
+        .query("projects")
+        .withIndex("by_devpostId", (q) => q.eq("devpostId", devpostId))
+        .unique()
+    );
+
+    const projects = await Promise.all(projectPromises);
+    const filteredProjects = projects.filter((p) => p !== null);
+
+    return {
+      success: true,
+      message: `Successfully retrieved projects for ${user.judgingSession.mentorName}'s group.`,
+      projects: filteredProjects,
+    };
   },
 });
