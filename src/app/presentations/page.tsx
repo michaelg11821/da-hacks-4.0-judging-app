@@ -195,7 +195,7 @@ function PresentationsPage() {
 
       setPresentations(newPresentations);
 
-      return toast.success(message);
+      // return toast.success(message);
     } catch (err: unknown) {
       console.error("error beginning presentation:", err);
 
@@ -255,8 +255,6 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
-
-      return toast.info(message);
     } catch (err: unknown) {
       console.error("error pausing presentation:", err);
 
@@ -311,8 +309,6 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
-
-      return toast.info(message);
     } catch (err: unknown) {
       console.error("error resuming presentation:", err);
 
@@ -506,15 +502,16 @@ function PresentationsPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <CheckCircle2 className="h-6 w-6 text-green-600" />
-                Congratulations!
+                Great job!
               </DialogTitle>
               <DialogDescription className="text-base pt-2">
-                🎉 All presentations complete. Great job!
+                All presentations complete. Please wait for further
+                instructions.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <DialogClose asChild>
-                <Button>Close</Button>
+                <Button variant="outline">OK</Button>
               </DialogClose>
             </DialogFooter>
           </DialogContent>
