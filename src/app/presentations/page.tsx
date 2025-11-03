@@ -424,37 +424,59 @@ function PresentationsPage() {
           onOpenChange={setShowIncompleteScoresDialog}
         >
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Info className="h-5 w-5 text-amber-600" />
-                Cannot Start Presentation
-              </DialogTitle>
-              <DialogDescription>
-                All judges must submit scores for presented projects before
-                starting the next presentation.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <p className="text-sm font-medium">Missing scores:</p>
-              <div className="space-y-2">
-                {incompleteScoresData?.incompleteProjects.map((proj) => (
-                  <div
-                    key={proj.projectName}
-                    className="rounded-md bg-muted p-3 text-sm"
-                  >
-                    <p className="font-medium mb-1">{proj.projectName}</p>
-                    <p className="text-muted-foreground">
-                      {proj.missingJudges.join(", ")}
-                    </p>
+            {incompleteScoresData?.hasIncompleteScores ? (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Info className="h-5 w-5 text-amber-600" />
+                    Cannot Start Presentation
+                  </DialogTitle>
+                  <DialogDescription>
+                    All judges must submit scores for presented projects before
+                    starting the next presentation.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <p className="text-sm font-medium">Missing scores:</p>
+                  <div className="space-y-2">
+                    {incompleteScoresData?.incompleteProjects.map((proj) => (
+                      <div
+                        key={proj.projectName}
+                        className="rounded-md bg-muted p-3 text-sm"
+                      >
+                        <p className="font-medium mb-1">{proj.projectName}</p>
+                        <p className="text-muted-foreground">
+                          {proj.missingJudges.join(", ")}
+                        </p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">OK</Button>
-              </DialogClose>
-            </DialogFooter>
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">OK</Button>
+                  </DialogClose>
+                </DialogFooter>
+              </>
+            ) : (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    All scores submitted
+                  </DialogTitle>
+                  <DialogDescription>
+                    All judges have submitted their scores. You can now proceed
+                    with the next presentation.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button>Continue</Button>
+                  </DialogClose>
+                </DialogFooter>
+              </>
+            )}
           </DialogContent>
         </Dialog>
 
@@ -523,11 +545,9 @@ function PresentationsPage() {
                             <div className="text-center self-center md:text-right">
                               <div
                                 className={`text-2xl md:text-3xl font-mono font-bold ${
-                                  slot.timerState.remainingSeconds === 0
-                                    ? "text-destructive animate-pulse"
-                                    : slot.timerState.remainingSeconds < 60
-                                      ? "text-destructive"
-                                      : "text-accent"
+                                  slot.timerState.remainingSeconds < 60
+                                    ? "text-destructive"
+                                    : "text-accent"
                                 }`}
                               >
                                 {slot.timerState.remainingSeconds === 0 &&
