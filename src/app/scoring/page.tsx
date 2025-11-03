@@ -121,6 +121,8 @@ function ScoringPage() {
 
     if (!groupProjects || !groupProjects.projects) return;
 
+    if (groupProjects.projects.length === 0) return;
+
     const allPresented = groupProjects.projects.every((p) => p.hasPresented);
 
     if (!allPresented) {
