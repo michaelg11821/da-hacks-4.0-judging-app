@@ -40,7 +40,9 @@ function PresentationStatus() {
             currentSlot.status === "completed"
           ) {
             if (isJudge) {
-              toast.success(`Presentation for ${projectName} ended.`);
+              toast.success(
+                `Presentation ended. Please submit your score for ${projectName}.`
+              );
             }
           }
         }
