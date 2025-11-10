@@ -39,7 +39,8 @@ export const createGroups = action({
     if (nonDirectors.length === 0)
       return {
         success: false,
-        message: "There are no judges or mentors.",
+        message:
+          "There are no judges or mentors in the system. Please have them log in to the app.",
       };
 
     const mentors = nonDirectors.filter((u) => u.role === "mentor");
@@ -48,14 +49,16 @@ export const createGroups = action({
     if (mentors.length === 0) {
       return {
         success: false,
-        message: "There are no mentors registered.",
+        message:
+          "There are no mentors registered. Please have them log in to the app.",
       };
     }
 
     if (judges.length === 0) {
       return {
         success: false,
-        message: "There are no judges registered.",
+        message:
+          "There are no judges registered. Please have them log in to the app.",
       };
     }
 
