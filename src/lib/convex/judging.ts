@@ -5,9 +5,9 @@ import {
   notJudgeMsg,
 } from "../constants/errorMessages";
 import { defaultDurationMinutes } from "../constants/presentations";
-import type { Group, JudgingSession, Score } from "../types/judging";
-import type { UserDoc } from "../types/user";
+import type { Group, Score } from "../types/judging";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import {
   action,
   internalMutation,
@@ -17,17 +17,16 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { getCurrentUser } from "./user";
-import { judgingSessionValidator } from "./validators";
+import { groupValidator } from "./validators";
 
 export const createGroups = action({
   handler: async (ctx) => {
     const currentUser = await ctx.runQuery(api.user.currentUser);
 
-    if (!currentUser)
-      return { success: false, message: noAuthMsg, groups: [] as Group[] };
+    if (!currentUser) return { success: false, message: noAuthMsg };
 
     if (currentUser.role !== "director")
-      return { success: false, message: notDirectorMsg, groups: [] as Group[] };
+      return { success: false, message: notDirectorMsg };
 
     const nonDirectors = await ctx.runQuery(internal.judging.listNonDirectors);
 
@@ -35,14 +34,12 @@ export const createGroups = action({
       return {
         success: false,
         message: "Failed to retrieve users who are not directors.",
-        groups: [] as Group[],
       };
 
     if (nonDirectors.length === 0)
       return {
         success: false,
         message: "There are no judges or mentors.",
-        groups: [] as Group[],
       };
 
     const mentors = nonDirectors.filter((u) => u.role === "mentor");
@@ -52,7 +49,6 @@ export const createGroups = action({
       return {
         success: false,
         message: "There are no mentors registered.",
-        groups: [] as Group[],
       };
     }
 
@@ -60,46 +56,57 @@ export const createGroups = action({
       return {
         success: false,
         message: "There are no judges registered.",
-        groups: [] as Group[],
       };
     }
 
-    const groups: Group[] = mentors.map((mentor, mentorIndex) => {
-      const assignedJudges = [];
+    const groupsMembers = mentors.map((mentor, mentorIndex) => {
+      const assignedJudgeIds: Id<"users">[] = [];
+      const assignedJudgeNames: string[] = [];
 
       for (let i = 0; i < judges.length; i++) {
-        if (i % mentors.length === mentorIndex) assignedJudges.push(judges[i]);
+        if (i % mentors.length === mentorIndex)
+          assignedJudgeIds.push(judges[i]._id);
+        assignedJudgeNames.push(judges[i].name ?? "Unknown Judge");
       }
 
       return {
-        mentorName: mentor.name || "Unknown Mentor",
-        judges: assignedJudges,
+        mentorId: mentor._id,
+        judgeIds: assignedJudgeIds,
+        judgeNames: assignedJudgeNames,
       };
     });
 
+    const groupIdMappings = new Map<Id<"users">, Id<"groups">>();
+
     for (let m = 0; m < mentors.length; m++) {
       const mentor = mentors[m];
-      const assignedJudges = groups[m]?.judges ?? [];
+      const assignedJudgeIds = groupsMembers[m]?.judgeIds ?? [];
+      const assignedJudgeNames = groupsMembers[m]?.judgeNames ?? [];
 
-      const judgeNames = assignedJudges.map((j) => j.name || "Unknown Judge");
-
-      const sessionBase: JudgingSession = {
-        projects: [],
-        judges: judgeNames,
+      const groupBase: Group = {
+        projectDevpostIds: [],
+        judgeIds: assignedJudgeIds,
+        judgeNames: assignedJudgeNames,
         presentations: [],
-        isActive: false,
-        mentorName: mentor.name || "Unknown Mentor",
+        mentorId: mentor._id,
+        mentorName: mentor.name ?? "Unknown Mentor",
       };
 
-      await ctx.runMutation(internal.judging.patchUserJudgingSession, {
-        userId: mentor._id,
-        judgingSession: sessionBase,
+      const groupId = await ctx.runMutation(internal.judging.createGroup, {
+        group: groupBase,
       });
 
-      for (const judge of assignedJudges) {
-        await ctx.runMutation(internal.judging.patchUserJudgingSession, {
-          userId: judge._id,
-          judgingSession: sessionBase,
+      groupIdMappings.set(mentor._id, groupId);
+
+      await ctx.runMutation(internal.judging.setUserGroupId, {
+        userId: mentor._id,
+        groupId,
+      });
+
+      for (const judgeId of assignedJudgeIds) {
+        await ctx.runMutation(internal.judging.setUserGroupId, {
+          userId: judgeId,
+          groupId,
         });
       }
     }
@@ -108,163 +115,129 @@ export const createGroups = action({
       await ctx.runMutation(internal.projectsConvex.removeAllProjects);
 
     if (!removalResult.success) {
-      return { success: false, message: removalResult.message, groups };
+      return { success: false, message: removalResult.message };
     }
 
-    const importResult: { success: boolean; message: string } =
-      await ctx.runAction(internal.projectsNode.importFromDevpost);
+    const scrapeResult: {
+      success: boolean;
+      message: string;
+      projects: {
+        devpostUrl: string;
+        devpostId: string;
+        name: string;
+        hasPresented: boolean;
+        teamMembers: string[];
+      }[];
+    } = await ctx.runAction(internal.projectsNode.importFromDevpost);
 
-    if (!importResult.success) {
-      return { success: false, message: importResult.message, groups };
+    if (!scrapeResult.success) {
+      return { success: false, message: scrapeResult.message };
     }
 
-    const allProjects = await ctx.runQuery(api.projectsConvex.listAllProjects);
+    const scrapedProjects = scrapeResult.projects ?? [];
 
-    if (!allProjects)
+    if (scrapedProjects.length === 0) {
       return {
         success: false,
-        message: "Failed to list all projects.",
-        groups,
-      };
-
-    if (allProjects.length === 0) {
-      return {
-        success: false,
-        message: "No projects available after import.",
-        groups,
+        message: "No projects available after scraping.",
       };
     }
 
-    const projectsPerGroup: JudgingSession["projects"][] = mentors.map(
-      () => []
+    const projectDevpostIdsPerGroup: string[][] = mentors.map(
+      () => [] as string[]
     );
 
-    for (let i = 0; i < allProjects.length; i++) {
+    for (let i = 0; i < scrapedProjects.length; i++) {
       const g = i % mentors.length;
+      const project = scrapedProjects[i];
+      const groupId = groupIdMappings.get(mentors[g]._id);
 
-      projectsPerGroup[g].push({
-        devpostId: allProjects[i].devpostId,
-        name: allProjects[i].name,
-        teamMembers: allProjects[i].teamMembers,
-        devpostUrl: allProjects[i].devpostUrl,
+      if (!groupId) {
+        return {
+          success: false,
+          message: "Failed to find groupId for mentor.",
+        };
+      }
+
+      await ctx.runMutation(internal.judging.insertProjectWithGroupId, {
+        groupId,
+        devpostId: project.devpostId,
+        name: project.name,
+        devpostUrl: project.devpostUrl,
+        teamMembers: project.teamMembers,
       });
+
+      projectDevpostIdsPerGroup[g].push(project.devpostId);
     }
 
     for (let m = 0; m < mentors.length; m++) {
       const mentor = mentors[m];
-      const assignedJudges = groups[m]?.judges ?? [];
+      const assignedJudgeIds = groupsMembers[m]?.judgeIds ?? [];
+      const assignedJudgeNames = groupsMembers[m]?.judgeNames ?? [];
 
-      const judgeNames = assignedJudges.map((j) => j.name || "Unknown Judge");
-
-      const presentations = projectsPerGroup[m].map((project, index) => ({
-        projectName: project.name,
-        projectDevpostId: project.devpostId,
-        startTime: Date.now() + index * defaultDurationMinutes * 60 * 1000,
-        duration: defaultDurationMinutes,
-        status: "upcoming" as const,
-        timerState: {
-          remainingSeconds: defaultDurationMinutes * 60,
-          isPaused: false,
-        },
-      }));
-
-      const sessionWithProjects: JudgingSession = {
-        projects: projectsPerGroup[m],
-        judges: judgeNames,
-        presentations,
-        isActive: false,
-        mentorName: mentor.name || "Unknown Mentor",
-      };
-
-      const mentorPatch = ctx.runMutation(
-        internal.judging.patchUserJudgingSession,
-        {
-          userId: mentor._id,
-          judgingSession: sessionWithProjects,
-        }
-      );
-
-      const judgePatches = assignedJudges.map((judge) =>
-        ctx.runMutation(internal.judging.patchUserJudgingSession, {
-          userId: judge._id,
-          judgingSession: sessionWithProjects,
+      const presentations = projectDevpostIdsPerGroup[m].map(
+        (projectDevpostId, index) => ({
+          projectName:
+            scrapedProjects.find((p) => p.devpostId === projectDevpostId)
+              ?.name ?? "Unknown Project",
+          projectDevpostId,
+          startTime: Date.now() + index * defaultDurationMinutes * 60 * 1000,
+          duration: defaultDurationMinutes,
+          status: "upcoming" as const,
+          timerState: {
+            remainingSeconds: defaultDurationMinutes * 60,
+            isPaused: false,
+          },
         })
       );
 
-      await Promise.all([mentorPatch, judgePatches]);
+      const groupWithProjects: Group = {
+        projectDevpostIds: projectDevpostIdsPerGroup[m],
+        judgeIds: assignedJudgeIds,
+        judgeNames: assignedJudgeNames,
+        presentations,
+        mentorId: mentor._id,
+        mentorName: mentor.name ?? "Unknown Mentor",
+      };
+
+      const groupId = groupIdMappings.get(mentor._id);
+
+      if (!groupId) {
+        return {
+          success: false,
+          message: "The system failed to create and find your group.",
+        };
+      }
+
+      await ctx.runMutation(internal.judging.patchGroup, {
+        groupId,
+        group: groupWithProjects,
+      });
     }
 
     return {
       success: true,
       message: "Groups created and projects assigned.",
-      groups,
     };
   },
 });
 
 async function getGroupsHelper(ctx: QueryCtx) {
-  const user = await getCurrentUser(ctx);
+  try {
+    const user = await getCurrentUser(ctx);
 
-  if (!user) return null;
+    if (!user) return null;
 
-  if (user.role !== "director" && user.role !== "mentor") {
-    return null;
-  }
-
-  const judges = await ctx.db
-    .query("users")
-    .withIndex("by_role", (q) => q.eq("role", "judge"))
-    .collect();
-
-  const judgesWithSessions = judges.filter((judge) => {
-    if (judge.judgingSession === undefined) {
-      console.warn(`${judge.name} is not assigned a group of judges.`);
-
-      return false;
+    if (user.role !== "director" && user.role !== "mentor") {
+      return null;
     }
 
-    return true;
-  });
+    return await ctx.db.query("groups").collect();
+  } catch (err: unknown) {
+    console.error("error getting groups:", err);
 
-  const groups = judgesWithSessions.reduce(
-    (acc, judge) => {
-      const mentorName = judge.judgingSession!.mentorName;
-
-      if (!acc[mentorName]) {
-        acc[mentorName] = {
-          mentorName,
-          judges: [],
-        };
-      }
-
-      acc[mentorName].judges.push(judge);
-
-      return acc;
-    },
-    {} as Record<
-      string,
-      {
-        mentorName: string;
-        judges: UserDoc[];
-      }
-    >
-  );
-
-  const groupsArray = Object.values(groups);
-
-  return groupsArray;
-}
-
-export async function getGroupByMentorName(ctx: QueryCtx, mentorName: string) {
-  const groups = await getGroupsHelper(ctx);
-
-  if (!groups) return null;
-
-  const group = groups.find((g) => g.mentorName === mentorName);
-
-  if (!group) return null;
-
-  return group;
+    return null;
+  }
 }
 
 export const getGroups = query({
@@ -273,15 +246,48 @@ export const getGroups = query({
   },
 });
 
-export const patchUserJudgingSession = internalMutation({
-  args: { userId: v.id("users"), judgingSession: judgingSessionValidator },
+export const patchGroup = internalMutation({
+  args: { groupId: v.id("groups"), group: groupValidator },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.userId, { judgingSession: args.judgingSession });
+    await ctx.db.patch(args.groupId, args.group);
+  },
+});
+
+export const createGroup = internalMutation({
+  args: { group: groupValidator },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("groups", args.group);
+  },
+});
+
+export const setUserGroupId = internalMutation({
+  args: { userId: v.id("users"), groupId: v.id("groups") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, { groupId: args.groupId });
+  },
+});
+
+export const insertProjectWithGroupId = internalMutation({
+  args: {
+    groupId: v.id("groups"),
+    devpostId: v.string(),
+    name: v.string(),
+    devpostUrl: v.string(),
+    teamMembers: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("projects", {
+      groupId: args.groupId,
+      devpostId: args.devpostId,
+      name: args.name,
+      teamMembers: args.teamMembers,
+      devpostUrl: args.devpostUrl,
+      hasPresented: false,
+    });
   },
 });
 
 export const listNonDirectors = internalQuery({
-  args: {},
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
 
@@ -297,94 +303,55 @@ export const listNonDirectors = internalQuery({
 });
 
 export const beginJudging = mutation({
-  args: { cursor: v.union(v.string(), v.null()), numItems: v.number() },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
+  handler: async (ctx) => {
+    try {
+      const user = await getCurrentUser(ctx);
 
-    if (!user) return { success: false, message: noAuthMsg };
+      if (!user) return { success: false, message: noAuthMsg };
 
-    if (user.role !== "director") {
-      return { success: false, message: notDirectorMsg };
-    }
-
-    const groups = await getGroupsHelper(ctx);
-
-    if (!groups || groups.length === 0) {
-      return {
-        success: false,
-        message: "Please create the judge groups before starting judging.",
-      };
-    }
-
-    const staff = await ctx.db.query("users").paginate(args);
-
-    const { page, isDone, continueCursor } = staff;
-
-    for (const staffMember of page) {
-      if (staffMember.judgingSession === undefined) {
-        console.warn(
-          `${staffMember.name} (${staffMember.role}) is not assigned to a group.`
-        );
-
-        continue;
+      if (user.role !== "director") {
+        return { success: false, message: notDirectorMsg };
       }
 
-      await ctx.db.patch(staffMember._id, {
-        judgingSession: { ...staffMember.judgingSession, isActive: true },
-      });
-    }
-
-    if (!isDone) {
-      await ctx.scheduler.runAfter(0, api.judging.beginJudging, {
-        cursor: continueCursor,
-        numItems: args.numItems,
+      await ctx.db.patch(process.env.JUDGING_STATUS_ID as Id<"judgingStatus">, {
+        active: true,
       });
 
-      return { success: true, message: "Processing..." };
-    } else {
       return { success: true, message: "Judging has began." };
+    } catch (err: unknown) {
+      console.error("error starting judging:", err);
+
+      return {
+        success: false,
+        message: "Unknown error starting judging. Please try again.",
+      };
     }
   },
 });
 
 export const endJudging = mutation({
-  args: { cursor: v.union(v.string(), v.null()), numItems: v.number() },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
+  handler: async (ctx) => {
+    try {
+      const user = await getCurrentUser(ctx);
 
-    if (!user) return { success: false, message: noAuthMsg };
+      if (!user) return { success: false, message: noAuthMsg };
 
-    if (user.role !== "director") {
-      return { success: false, message: notDirectorMsg };
-    }
-
-    const staff = await ctx.db.query("users").paginate(args);
-
-    const { page, isDone, continueCursor } = staff;
-
-    for (const staffMember of page) {
-      if (staffMember.judgingSession === undefined) {
-        console.warn(
-          `${staffMember.name} (${staffMember.role}) is not assigned to a group.`
-        );
-
-        continue;
+      if (user.role !== "director") {
+        return { success: false, message: notDirectorMsg };
       }
 
-      await ctx.db.patch(staffMember._id, {
-        judgingSession: { ...staffMember.judgingSession, isActive: false },
-      });
-    }
-
-    if (!isDone) {
-      await ctx.scheduler.runAfter(0, api.judging.endJudging, {
-        cursor: continueCursor,
-        numItems: args.numItems,
+      await ctx.db.patch(process.env.JUDGING_STATUS_ID as Id<"judgingStatus">, {
+        active: false,
       });
 
-      return { success: true, message: "Processing..." };
-    } else {
       return { success: true, message: "Judging has ended." };
+    } catch (err: unknown) {
+      console.error("error starting judging:", err);
+
+      return {
+        success: false,
+        message: "Unknown error ending judging. Please try again.",
+      };
     }
   },
 });
@@ -395,102 +362,173 @@ export const submitScore = mutation({
     criteria: v.record(v.string(), v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
+    try {
+      const user = await getCurrentUser(ctx);
 
-    if (!user) return { success: false, message: noAuthMsg };
+      if (!user) return { success: false, message: noAuthMsg };
 
-    if (user.role !== "judge") {
-      return { success: false, message: notJudgeMsg };
+      if (user.role !== "judge") {
+        return { success: false, message: notJudgeMsg };
+      }
+
+      const project = await ctx.db
+        .query("projects")
+        .withIndex("by_devpostId", (q) =>
+          q.eq("devpostId", args.projectDevpostId)
+        )
+        .first();
+
+      if (!project)
+        return {
+          success: false,
+          message:
+            "This project does not exist. If this is a mistake, contact Michael from the Tech team.",
+        };
+
+      if (!project.hasPresented)
+        return {
+          success: false,
+          message:
+            "Cannot score a project that hasn't presented yet. Please wait for the presentation to finish.",
+        };
+
+      const newScore: Score = {
+        projectId: project._id,
+        judgeId: user._id,
+        criteria: args.criteria,
+      };
+      const existingScore = await ctx.db
+        .query("scores")
+        .withIndex("by_projectId_judgeId", (q) =>
+          q.eq("projectId", project._id).eq("judgeId", user._id)
+        )
+        .first();
+
+      if (existingScore) {
+        await ctx.db.patch(existingScore._id, newScore);
+      } else {
+        await ctx.db.insert("scores", newScore);
+      }
+
+      return { success: true, message: "Successfully submitted score." };
+    } catch (err: unknown) {
+      console.error("error submitting score:", err);
+
+      return {
+        success: false,
+        message: "Unknown error submitting score. Please try again.",
+      };
     }
+  },
+});
 
-    if (!user.judgingSession)
-      return {
-        success: false,
-        message:
-          "You have not been assigned any projects. If this is a mistake, contact Michael from the Tech team.",
-      };
+export const getGroupById = query({
+  args: { groupId: v.optional(v.id("groups")) },
+  handler: async (ctx, args) => {
+    if (!args.groupId) return null;
 
-    const project = await ctx.db
-      .query("projects")
-      .withIndex("by_devpostId", (q) =>
-        q.eq("devpostId", args.projectDevpostId)
-      )
-      .first();
-
-    if (!project)
-      return {
-        success: false,
-        message:
-          "This project does not exist. If this is a mistake, contact Michael from the Tech team.",
-      };
-
-    if (!project.hasPresented)
-      return {
-        success: false,
-        message:
-          "Cannot score a project that hasn't presented yet. Please wait for the presentation to finish.",
-      };
-
-    const newScore: Score = { judgeId: user._id, criteria: args.criteria };
-    const existingScore = project.scores.find(
-      (score) => score.judgeId === user._id
-    );
-
-    if (existingScore) {
-      const existingScoreIndex = project.scores.indexOf(existingScore);
-
-      const scoresCopy = structuredClone(project.scores);
-      scoresCopy[existingScoreIndex] = newScore;
-
-      await ctx.db.patch(project._id, { scores: scoresCopy });
-    } else {
-      await ctx.db.patch(project._id, {
-        scores: [...project.scores, newScore],
-      });
-    }
-
-    return { success: true, message: "Successfully submitted score." };
+    return ctx.db.get(args.groupId);
   },
 });
 
 export const getGroupProjects = query({
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
+    try {
+      const user = await getCurrentUser(ctx);
 
-    if (!user) return { success: false, message: noAuthMsg, projects: [] };
+      if (!user) return { success: false, message: noAuthMsg, projects: [] };
 
-    if (user.role !== "mentor" && user.role !== "judge") {
+      if (user.role !== "mentor" && user.role !== "judge") {
+        return {
+          success: false,
+          message: "You must be a mentor or judge to access projects.",
+          projects: [],
+        };
+      }
+
+      if (!user.groupId)
+        return {
+          success: false,
+          message:
+            "You have not been assigned any projects. If this is a mistake, contact Michael from the Tech team.",
+          projects: [],
+        };
+
+      const projects = await ctx.db
+        .query("projects")
+        .withIndex("by_groupId", (q) => q.eq("groupId", user.groupId!))
+        .collect();
+
+      return {
+        success: true,
+        message: `Successfully retrieved projects for ${user.name ?? "Unknown User"}'s group.`,
+        projects,
+      };
+    } catch (err: unknown) {
+      console.error("error getting group projects", err);
+
       return {
         success: false,
-        message: "You must be a mentor or judge to access projects.",
+        message: "Error getting group projects. Please try again.",
         projects: [],
       };
     }
+  },
+});
 
-    if (!user.judgingSession)
-      return {
-        success: false,
-        message:
-          "You have not been assigned any projects. If this is a mistake, contact Michael from the Tech team.",
-        projects: [],
-      };
+export const getJudgingStatus = query({
+  handler: async (ctx) => {
+    return await ctx.db.get(
+      process.env.JUDGING_STATUS_ID as Id<"judgingStatus">
+    );
+  },
+});
 
-    const devpostIds = user.judgingSession.projects.map((p) => p.devpostId);
+export const getMyScores = query({
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
 
-    const projectPromises = devpostIds.map((devpostId) =>
-      ctx.db
-        .query("projects")
-        .withIndex("by_devpostId", (q) => q.eq("devpostId", devpostId))
-        .unique()
+    if (!user) return null;
+
+    if (user.role !== "judge") {
+      return null;
+    }
+
+    const scores = await ctx.db
+      .query("scores")
+      .withIndex("by_judgeId", (q) => q.eq("judgeId", user._id))
+      .collect();
+
+    return scores;
+  },
+});
+
+export const getAllScores = query({
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user) return null;
+
+    const projects = await ctx.db.query("projects").collect();
+
+    const allScores = await ctx.db.query("scores").collect();
+
+    const scoresByProject = allScores.reduce(
+      (acc, score) => {
+        if (!acc[score.projectId]) {
+          acc[score.projectId] = [];
+        }
+        acc[score.projectId].push(score);
+        return acc;
+      },
+      {} as Record<string, typeof allScores>
     );
 
-    const projects = await Promise.all(projectPromises);
-    const filteredProjects = projects.filter((p) => p !== null);
+    const projectsWithScores = projects.map((project) => ({
+      ...project,
+      scores: scoresByProject[project._id] || [],
+    }));
 
-    return {
-      success: true,
-      message: `Successfully retrieved projects for ${user.judgingSession.mentorName}'s group.`,
-      projects: filteredProjects,
-    };
+    return projectsWithScores;
   },
 });

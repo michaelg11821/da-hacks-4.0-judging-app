@@ -1,526 +1,176 @@
 import { v } from "convex/values";
 import { noAuthMsg, notMentorMsg } from "../constants/errorMessages";
+import { defaultDurationMinutes } from "../constants/presentations";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { getGroupByMentorName } from "./judging";
 import { getCurrentUser } from "./user";
-import { presentationSlotValidator } from "./validators";
 
 export const beginPresentation = mutation({
   args: {
-    newPresentations: v.array(presentationSlotValidator),
-    projectName: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
-
-    if (!user) return { success: false, message: noAuthMsg };
-
-    if (user.role !== "mentor") {
-      return { success: false, message: notMentorMsg };
-    }
-
-    if (!user.judgingSession) {
-      return { success: false, message: "You are not assigned any judges." };
-    }
-
-    if (!user.judgingSession.isActive) {
-      return { success: false, message: "Please wait until judging begins." };
-    }
-
-    const group = await getGroupByMentorName(
-      ctx,
-      user.name ?? "Unknown Mentor"
-    );
-
-    if (!group) {
-      return {
-        success: false,
-        message: "Your group could not be found in the system.",
-      };
-    }
-
-    const activePresentation = args.newPresentations.find(
-      (p) => p.status === "presenting" && p.projectName !== args.projectName
-    );
-
-    if (activePresentation) {
-      return {
-        success: false,
-        message: `Cannot start ${args.projectName}. ${activePresentation.projectName} is currently presenting.`,
-      };
-    }
-
-    const presentedProjects = await ctx.db
-      .query("projects")
-      .collect()
-      .then((projects) =>
-        projects.filter((p) => {
-          const isInGroup = user.judgingSession!.projects.some(
-            (gp) => gp.devpostId === p.devpostId
-          );
-          return isInGroup && p.hasPresented;
-        })
-      );
-
-    const judgeIds = group.judges.map((j) => j._id);
-
-    for (const project of presentedProjects) {
-      const judgesWhoScored = project.scores.map((s) => s.judgeId);
-      const judgesWhoHaventScored = judgeIds.filter(
-        (judgeId) => !judgesWhoScored.includes(judgeId)
-      );
-
-      if (judgesWhoHaventScored.length > 0) {
-        const judgeNames = group.judges
-          .filter((j) => judgesWhoHaventScored.includes(j._id))
-          .map((j) => j.name || "Unknown")
-          .join(", ");
-
-        return {
-          success: false,
-          message: `Cannot start new presentation. The following judges have not scored "${project.name}": ${judgeNames}`,
-        };
-      }
-    }
-
-    await ctx.db.patch(user._id, {
-      judgingSession: {
-        ...user.judgingSession,
-        presentations: args.newPresentations,
-        currentProjectPresenting: args.projectName,
-      },
-    });
-
-    await Promise.all(
-      group.judges.map((judge) => {
-        if (!judge.judgingSession) {
-          return;
-        }
-
-        return ctx.db.patch(judge._id, {
-          judgingSession: {
-            ...judge.judgingSession,
-            presentations: args.newPresentations,
-            currentProjectPresenting: args.projectName,
-          },
-        });
-      })
-    );
-
-    const startedPresentation = args.newPresentations.find(
-      (p) => p.projectName === args.projectName && p.status === "presenting"
-    );
-
-    if (startedPresentation && startedPresentation.timerState.startedAt) {
-      const durationMs = startedPresentation.duration * 60 * 1000;
-      const scheduledTime =
-        startedPresentation.timerState.startedAt + durationMs;
-
-      const delayMs = Math.max(0, scheduledTime - Date.now() + 500);
-
-      await ctx.scheduler.runAfter(
-        delayMs,
-        internal.presentations.autoCompletePresentation,
-        {
-          mentorName: user.name ?? "Unknown Mentor",
-          projectDevpostId: startedPresentation.projectDevpostId,
-          projectName: args.projectName,
-        }
-      );
-    }
-
-    return {
-      success: true,
-      message: `Presentation for ${args.projectName} started.`,
-    };
-  },
-});
-
-export const endPresentation = mutation({
-  args: {
-    newPresentations: v.array(presentationSlotValidator),
-    projectName: v.string(),
     projectDevpostId: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
+    try {
+      const user = await getCurrentUser(ctx);
 
-    if (!user) return { success: false, message: noAuthMsg };
+      if (!user) return { success: false, message: noAuthMsg };
 
-    if (user.role !== "mentor") {
-      return { success: false, message: notMentorMsg };
-    }
+      if (user.role !== "mentor") {
+        return { success: false, message: notMentorMsg };
+      }
 
-    if (!user.judgingSession) {
-      return { success: false, message: "You are not assigned any judges." };
-    }
+      if (!user.groupId) {
+        return { success: false, message: "You are not assigned any judges." };
+      }
 
-    if (!user.judgingSession.isActive) {
-      return { success: false, message: "Please wait until judging begins." };
-    }
+      const group = await ctx.db.get(user.groupId);
+      const judgingStatus = await ctx.db.query("judgingStatus").first();
 
-    const group = await getGroupByMentorName(
-      ctx,
-      user.name ?? "Unknown Mentor"
-    );
+      if (judgingStatus?.active === false) {
+        return { success: false, message: "Please wait until judging begins." };
+      }
 
-    if (!group) {
-      return {
-        success: false,
-        message: "Your group could not be found in the system.",
-      };
-    }
+      if (!group) {
+        return {
+          success: false,
+          message: "Your group could not be found in the system.",
+        };
+      }
 
-    await ctx.db.patch(user._id, {
-      judgingSession: {
-        ...user.judgingSession,
-        presentations: args.newPresentations,
-        currentProjectPresenting: undefined,
-      },
-    });
+      const project = await ctx.db
+        .query("projects")
+        .withIndex("by_devpostId", (q) =>
+          q.eq("devpostId", args.projectDevpostId)
+        )
+        .first();
 
-    const project = await ctx.db
-      .query("projects")
-      .withIndex("by_devpostId", (q) =>
-        q.eq("devpostId", args.projectDevpostId)
-      )
-      .first();
+      if (!project) {
+        return {
+          success: false,
+          message: "The project could not be found in the system.",
+        };
+      }
 
-    if (!project) {
-      return {
-        success: false,
-        message: "The project could not be found in the system.",
-      };
-    }
+      if (group.currentProjectPresenting) {
+        const projectPresenting = await ctx.db
+          .query("projects")
+          .withIndex("by_devpostId", (q) =>
+            q.eq("devpostId", group.currentProjectPresenting!)
+          )
+          .first();
 
-    await ctx.db.patch(project._id, { hasPresented: true });
+        if (!projectPresenting)
+          return {
+            success: false,
+            message: "The project presenting could not be found in the system.",
+          };
 
-    await Promise.all(
-      group.judges.map((judge) => {
-        if (!judge.judgingSession) {
-          return;
+        return {
+          success: false,
+          message: `Cannot start presentation for ${project.name}. ${projectPresenting.name} is currently presenting.`,
+        };
+      }
+
+      const presentedProjects = await ctx.db
+        .query("projects")
+        .withIndex("by_groupId_hasPresented", (q) =>
+          q.eq("groupId", group._id).eq("hasPresented", true)
+        )
+        .collect();
+
+      for (const project of presentedProjects) {
+        const scores = await ctx.db
+          .query("scores")
+          .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
+          .collect();
+
+        const judgesWhoScored = scores.map((s) => s.judgeId);
+        const judgesWhoHaventScored = group.judgeIds.filter(
+          (judgeId) => !judgesWhoScored.includes(judgeId)
+        );
+
+        if (judgesWhoHaventScored.length > 0) {
+          const judgeDocsDirty = await Promise.all(
+            judgesWhoHaventScored.map((judgeId) => ctx.db.get(judgeId))
+          );
+          const judgeDocs = judgeDocsDirty.filter((judge) => judge !== null);
+
+          const judgeNames = judgeDocs
+            .map((judge) => judge.name ?? "Unknown Judge")
+            .join(", ");
+
+          return {
+            success: false,
+            message: `Cannot start presentation. The following judges have not scored "${project.name}": ${judgeNames}`,
+          };
         }
+      }
 
-        return ctx.db.patch(judge._id, {
-          judgingSession: {
-            ...judge.judgingSession,
-            presentations: args.newPresentations,
-            currentProjectPresenting: undefined,
-          },
-        });
-      })
-    );
-
-    return {
-      success: true,
-      message: `Presentation ended. Please tell your judges to submit scores for ${args.projectName}.`,
-    };
-  },
-});
-
-export const pausePresentation = mutation({
-  args: {
-    newPresentations: v.array(presentationSlotValidator),
-    projectName: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
-
-    if (!user) return { success: false, message: noAuthMsg };
-
-    if (user.role !== "mentor") {
-      return { success: false, message: notMentorMsg };
-    }
-
-    if (!user.judgingSession) {
-      return { success: false, message: "You are not assigned any judges." };
-    }
-
-    if (!user.judgingSession.isActive) {
-      return { success: false, message: "Please wait until judging begins." };
-    }
-
-    const group = await getGroupByMentorName(
-      ctx,
-      user.name ?? "Unknown Mentor"
-    );
-
-    if (!group) {
-      return {
-        success: false,
-        message: "Your group could not be found in the system.",
-      };
-    }
-
-    await ctx.db.patch(user._id, {
-      judgingSession: {
-        ...user.judgingSession,
-        presentations: args.newPresentations,
-        currentProjectPresenting: undefined,
-      },
-    });
-
-    await Promise.all(
-      group.judges.map((judge) => {
-        if (!judge.judgingSession) {
-          return;
-        }
-
-        return ctx.db.patch(judge._id, {
-          judgingSession: {
-            ...judge.judgingSession,
-            presentations: args.newPresentations,
-            currentProjectPresenting: undefined,
-          },
-        });
-      })
-    );
-
-    return {
-      success: true,
-      message: `Presentation for ${args.projectName} paused.`,
-    };
-  },
-});
-
-export const resumePresentation = mutation({
-  args: {
-    newPresentations: v.array(presentationSlotValidator),
-    projectName: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
-
-    if (!user) return { success: false, message: noAuthMsg };
-
-    if (user.role !== "mentor") {
-      return { success: false, message: notMentorMsg };
-    }
-
-    if (!user.judgingSession) {
-      return { success: false, message: "You are not assigned any judges." };
-    }
-
-    if (!user.judgingSession.isActive) {
-      return { success: false, message: "Please wait until judging begins." };
-    }
-
-    const group = await getGroupByMentorName(
-      ctx,
-      user.name ?? "Unknown Mentor"
-    );
-
-    if (!group) {
-      return {
-        success: false,
-        message: "Your group could not be found in the system.",
-      };
-    }
-
-    const activePresentation = args.newPresentations.find(
-      (p) => p.status === "presenting" && p.projectName !== args.projectName
-    );
-
-    if (activePresentation) {
-      return {
-        success: false,
-        message: `Cannot resume ${args.projectName}. ${activePresentation.projectName} is currently presenting.`,
-      };
-    }
-
-    await ctx.db.patch(user._id, {
-      judgingSession: {
-        ...user.judgingSession,
-        presentations: args.newPresentations,
-        currentProjectPresenting: args.projectName,
-      },
-    });
-
-    await Promise.all(
-      group.judges.map((judge) => {
-        if (!judge.judgingSession) {
-          return;
-        }
-
-        return ctx.db.patch(judge._id, {
-          judgingSession: {
-            ...judge.judgingSession,
-            presentations: args.newPresentations,
-            currentProjectPresenting: args.projectName,
-          },
-        });
-      })
-    );
-
-    const resumedPresentation = args.newPresentations.find(
-      (p) => p.projectName === args.projectName && p.status === "presenting"
-    );
-
-    if (resumedPresentation && resumedPresentation.timerState.startedAt) {
-      const durationMs = resumedPresentation.duration * 60 * 1000;
-      const scheduledTime =
-        resumedPresentation.timerState.startedAt + durationMs;
-
-      const delayMs = Math.max(0, scheduledTime - Date.now() + 500);
-
-      console.log(
-        `[resumePresentation] Scheduling auto-complete for ${args.projectName} in ${delayMs}ms (${Math.floor(delayMs / 1000)}s)`
+      const now = Date.now();
+      const updatedPresentations = group.presentations.map((slot) =>
+        slot.projectDevpostId === args.projectDevpostId
+          ? {
+              ...slot,
+              status: "presenting" as const,
+              timerState: {
+                ...slot.timerState,
+                isPaused: false,
+                startedAt: now,
+              },
+            }
+          : slot
       );
+
+      await ctx.db.patch(group._id, {
+        ...group,
+        currentProjectPresenting: args.projectDevpostId,
+        presentations: updatedPresentations,
+      });
+
+      const durationMs = defaultDurationMinutes * 60 * 1000;
+      const delayMs = Math.max(0, now + durationMs - Date.now() + 500);
 
       await ctx.scheduler.runAfter(
         delayMs,
         internal.presentations.autoCompletePresentation,
         {
-          mentorName: user.name ?? "Unknown Mentor",
-          projectDevpostId: resumedPresentation.projectDevpostId,
-          projectName: args.projectName,
+          groupId: group._id,
+          projectDevpostId: args.projectDevpostId,
+          projectId: project._id,
         }
       );
+
+      return {
+        success: true,
+        message: `Presentation for ${project.name} started.`,
+      };
+    } catch (err: unknown) {
+      console.error(`error presentation for ${args.projectDevpostId}`, err);
+
+      return {
+        success: false,
+        message: "Unknown error starting presentation. Please try again.",
+      };
     }
-
-    return {
-      success: true,
-      message: `Presentation for ${args.projectName} resumed.`,
-    };
-  },
-});
-
-export const checkIncompleteScores = query({
-  args: {},
-  handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-
-    if (!user || !user.judgingSession) {
-      return null;
-    }
-
-    if (user.role !== "mentor") {
-      return null;
-    }
-
-    const group = await getGroupByMentorName(
-      ctx,
-      user.name ?? "Unknown Mentor"
-    );
-
-    if (!group) {
-      return null;
-    }
-
-    const presentedProjects = await ctx.db
-      .query("projects")
-      .withIndex("by_hasPresented", (q) => q.eq("hasPresented", true))
-      .collect();
-
-    const judgeIds = group.judges.map((j) => j._id);
-    const incompleteProjects: Array<{
-      projectName: string;
-      missingJudges: string[];
-    }> = [];
-
-    for (const project of presentedProjects) {
-      const judgesWhoScored = project.scores.map((s) => s.judgeId);
-      const judgesWhoHaventScored = judgeIds.filter(
-        (judgeId) => !judgesWhoScored.includes(judgeId)
-      );
-
-      if (judgesWhoHaventScored.length > 0) {
-        const judgeNames = group.judges
-          .filter((j) => judgesWhoHaventScored.includes(j._id))
-          .map((j) => j.name || "Unknown");
-
-        incompleteProjects.push({
-          projectName: project.name,
-          missingJudges: judgeNames,
-        });
-      }
-    }
-
-    return {
-      hasIncompleteScores: incompleteProjects.length > 0,
-      incompleteProjects,
-    };
-  },
-});
-
-export const getAllGroupsPresentationStatus = query({
-  args: {},
-  handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-
-    if (!user || user.role !== "director") {
-      return null;
-    }
-
-    const mentors = await ctx.db
-      .query("users")
-      .withIndex("by_role", (q) => q.eq("role", "mentor"))
-      .collect();
-
-    const groupStatuses = await Promise.all(
-      mentors.map(async (mentor) => {
-        if (!mentor.judgingSession) {
-          return {
-            mentorName: mentor.name || "Unknown",
-            totalProjects: 0,
-            presentedProjects: 0,
-            currentlyPresenting: null as string | null,
-            allComplete: false,
-          };
-        }
-
-        const totalProjects = mentor.judgingSession.projects.length;
-        const presentations = mentor.judgingSession.presentations;
-
-        const presentedCount = presentations.filter(
-          (p) => p.status === "completed"
-        ).length;
-
-        const currentPresentation = presentations.find(
-          (p) => p.status === "presenting"
-        );
-
-        return {
-          mentorName: mentor.name || "Unknown",
-          totalProjects,
-          presentedProjects: presentedCount,
-          currentlyPresenting: currentPresentation?.projectName || null,
-          allComplete: presentedCount === totalProjects && totalProjects > 0,
-        };
-      })
-    );
-
-    const allGroupsComplete = groupStatuses.every((g) => g.allComplete);
-
-    return {
-      groups: groupStatuses,
-      allGroupsComplete,
-    };
   },
 });
 
 export const autoCompletePresentation = internalMutation({
   args: {
-    mentorName: v.string(),
+    groupId: v.id("groups"),
     projectDevpostId: v.string(),
-    projectName: v.string(),
+    projectId: v.id("projects"),
   },
   handler: async (ctx, args) => {
-    const mentor = await ctx.db
-      .query("users")
-      .withIndex("by_role", (q) => q.eq("role", "mentor"))
-      .filter((q) => q.eq(q.field("name"), args.mentorName))
-      .first();
+    const group = await ctx.db.get(args.groupId);
 
-    if (!mentor || !mentor.judgingSession) {
-      console.error(
-        `[autoCompletePresentation] mentor ${args.mentorName} not found or has no judging session`
-      );
+    if (!group) {
+      console.error(`group ${args.groupId} not found`);
+
       return;
     }
 
-    const currentPresentation = mentor.judgingSession.presentations.find(
+    const currentPresentation = group.presentations.find(
       (p) => p.projectDevpostId === args.projectDevpostId
     );
 
@@ -547,23 +197,13 @@ export const autoCompletePresentation = internalMutation({
       return;
     }
 
-    const judges = await ctx.db
-      .query("users")
-      .withIndex("by_role", (q) => q.eq("role", "judge"))
-      .collect();
+    if (group.judgeIds.length === 0) {
+      console.error(`no judges found in group ${args.groupId}`);
 
-    const judgesInGroup = judges.filter(
-      (judge) => judge.judgingSession?.mentorName === args.mentorName
-    );
-
-    if (judgesInGroup.length === 0) {
-      console.error(
-        `[autoCompletePresentation] No judges found for mentor ${args.mentorName}`
-      );
       return;
     }
 
-    const newPresentations = mentor.judgingSession.presentations.map((slot) =>
+    const updatedPresentations = group.presentations.map((slot) =>
       slot.projectDevpostId === args.projectDevpostId
         ? {
             ...slot,
@@ -576,39 +216,460 @@ export const autoCompletePresentation = internalMutation({
         : slot
     );
 
-    await ctx.db.patch(mentor._id, {
-      judgingSession: {
-        ...mentor.judgingSession,
-        presentations: newPresentations,
-        currentProjectPresenting: undefined,
-      },
+    await ctx.db.patch(args.groupId, {
+      ...group,
+      currentProjectPresenting: undefined,
+      presentations: updatedPresentations,
     });
 
-    const project = await ctx.db
-      .query("projects")
-      .withIndex("by_devpostId", (q) =>
-        q.eq("devpostId", args.projectDevpostId)
-      )
-      .first();
+    await ctx.db.patch(args.projectId, { hasPresented: true });
+  },
+});
 
-    if (project) {
+export const endPresentation = mutation({
+  args: {
+    projectDevpostId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const user = await getCurrentUser(ctx);
+
+      if (!user) return { success: false, message: noAuthMsg };
+
+      if (user.role !== "mentor") {
+        return { success: false, message: notMentorMsg };
+      }
+
+      if (!user.groupId) {
+        return { success: false, message: "You are not assigned any judges." };
+      }
+
+      const group = await ctx.db.get(user.groupId);
+      const judgingStatus = await ctx.db.query("judgingStatus").first();
+
+      if (judgingStatus?.active === false) {
+        return { success: false, message: "Please wait until judging begins." };
+      }
+
+      if (!group) {
+        return {
+          success: false,
+          message: "Your group could not be found in the system.",
+        };
+      }
+
+      const project = await ctx.db
+        .query("projects")
+        .withIndex("by_devpostId", (q) =>
+          q.eq("devpostId", args.projectDevpostId)
+        )
+        .first();
+
+      if (!project) {
+        return {
+          success: false,
+          message: "The project could not be found in the system.",
+        };
+      }
+
+      const newPresentations = group.presentations.map((slot) =>
+        slot.projectDevpostId === args.projectDevpostId
+          ? {
+              ...slot,
+              status: "completed" as const,
+              timerState: {
+                remainingSeconds: 0,
+                isPaused: true,
+              },
+            }
+          : slot
+      );
+
+      await ctx.db.patch(group._id, {
+        ...group,
+        currentProjectPresenting: undefined,
+        presentations: newPresentations,
+      });
+
       await ctx.db.patch(project._id, { hasPresented: true });
+
+      return {
+        success: true,
+        message: `Presentation ended. Please tell your judges to submit scores for ${project.name}.`,
+      };
+    } catch (err: unknown) {
+      console.error(
+        `error ending presentation for ${args.projectDevpostId}`,
+        err
+      );
+
+      return {
+        success: false,
+        message: "Unknown error ending presentation. Please try again.",
+      };
+    }
+  },
+});
+
+export const pausePresentation = mutation({
+  args: {
+    projectDevpostId: v.string(),
+    projectName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const user = await getCurrentUser(ctx);
+
+      if (!user) return { success: false, message: noAuthMsg };
+
+      if (user.role !== "mentor") {
+        return { success: false, message: notMentorMsg };
+      }
+
+      if (!user.groupId) {
+        return { success: false, message: "You are not assigned any judges." };
+      }
+
+      const group = await ctx.db.get(user.groupId);
+      const judgingStatus = await ctx.db.query("judgingStatus").first();
+
+      if (judgingStatus?.active === false) {
+        return { success: false, message: "Please wait until judging begins." };
+      }
+
+      if (!group) {
+        return {
+          success: false,
+          message: "Your group could not be found in the system.",
+        };
+      }
+
+      const newPresentations = group.presentations.map((slot) =>
+        slot.projectDevpostId === args.projectDevpostId
+          ? {
+              ...slot,
+              timerState: {
+                ...slot.timerState,
+                isPaused: true,
+                remainingSeconds: slot.timerState.startedAt
+                  ? Math.max(
+                      0,
+                      slot.duration * 60 -
+                        Math.floor(
+                          (Date.now() - slot.timerState.startedAt) / 1000
+                        )
+                    )
+                  : slot.timerState.remainingSeconds,
+              },
+            }
+          : slot
+      );
+
+      await ctx.db.patch(group._id, {
+        ...group,
+        currentProjectPresenting: undefined,
+        presentations: newPresentations,
+      });
+
+      return {
+        success: true,
+        message: `Presentation for ${args.projectName} paused.`,
+      };
+    } catch (err: unknown) {
+      console.error(
+        `error pausing presentation for ${args.projectDevpostId}`,
+        err
+      );
+
+      return {
+        success: false,
+        message: "Unknown error pausing presentation. Please try again.",
+      };
+    }
+  },
+});
+
+export const resumePresentation = mutation({
+  args: {
+    projectDevpostId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const user = await getCurrentUser(ctx);
+
+      if (!user) return { success: false, message: noAuthMsg };
+
+      if (user.role !== "mentor") {
+        return { success: false, message: notMentorMsg };
+      }
+
+      if (!user.groupId) {
+        return { success: false, message: "You are not assigned any judges." };
+      }
+
+      const group = await ctx.db.get(user.groupId);
+      const judgingStatus = await ctx.db.query("judgingStatus").first();
+
+      if (judgingStatus?.active === false) {
+        return { success: false, message: "Please wait until judging begins." };
+      }
+
+      if (!group) {
+        return {
+          success: false,
+          message: "Your group could not be found in the system.",
+        };
+      }
+
+      const project = await ctx.db
+        .query("projects")
+        .withIndex("by_devpostId", (q) =>
+          q.eq("devpostId", args.projectDevpostId)
+        )
+        .first();
+
+      if (!project) {
+        return {
+          success: false,
+          message: "The project could not be found in the system.",
+        };
+      }
+
+      if (group.currentProjectPresenting) {
+        const projectPresenting = await ctx.db
+          .query("projects")
+          .withIndex("by_devpostId", (q) =>
+            q.eq("devpostId", group.currentProjectPresenting!)
+          )
+          .first();
+
+        if (!projectPresenting)
+          return {
+            success: false,
+            message: "The project presenting could not be found in the system.",
+          };
+
+        return {
+          success: false,
+          message: `Cannot start presentation for ${project.name}. ${projectPresenting.name} is currently presenting.`,
+        };
+      }
+
+      const newPresentations = group.presentations.map((slot) =>
+        slot.projectDevpostId === args.projectDevpostId
+          ? {
+              ...slot,
+              timerState: {
+                ...slot.timerState,
+                isPaused: false,
+                startedAt: new Date(
+                  Date.now() -
+                    (slot.duration * 60 - slot.timerState.remainingSeconds) *
+                      1000
+                ).getTime(),
+              },
+            }
+          : slot
+      );
+
+      await ctx.db.patch(group._id, {
+        ...group,
+        currentProjectPresenting: args.projectDevpostId,
+        presentations: newPresentations,
+      });
+
+      const resumedPresentation = group.presentations.find(
+        (p) =>
+          p.projectDevpostId === args.projectDevpostId &&
+          p.status === "presenting"
+      );
+
+      if (resumedPresentation && resumedPresentation.timerState.startedAt) {
+        const durationMs = defaultDurationMinutes * 60 * 1000;
+        const scheduledTime =
+          resumedPresentation.timerState.startedAt + durationMs;
+
+        const delayMs = Math.max(0, scheduledTime - Date.now() + 500);
+
+        await ctx.scheduler.runAfter(
+          delayMs,
+          internal.presentations.autoCompletePresentation,
+          {
+            groupId: group._id,
+            projectDevpostId: args.projectDevpostId,
+            projectId: project._id,
+          }
+        );
+      }
+
+      return {
+        success: true,
+        message: `Presentation for ${project.name} resumed.`,
+      };
+    } catch (err: unknown) {
+      console.error(
+        `error resuming presentation for ${args.projectDevpostId}`,
+        err
+      );
+
+      return {
+        success: false,
+        message: "Unknown error resuming presentation. Please try again.",
+      };
+    }
+  },
+});
+
+export const checkIncompleteScores = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user || !user.groupId) {
+      return null;
     }
 
-    await Promise.all(
-      judgesInGroup.map((judge) => {
-        if (!judge.judgingSession) {
-          return;
+    if (user.role !== "mentor") {
+      return null;
+    }
+
+    const group = await ctx.db.get(user.groupId);
+
+    if (!group) {
+      return null;
+    }
+
+    const presentedProjects = await ctx.db
+      .query("projects")
+      .withIndex("by_groupId_hasPresented", (q) =>
+        q.eq("groupId", group._id).eq("hasPresented", true)
+      )
+      .collect();
+
+    const incompleteProjects: {
+      projectName: string;
+      missingJudges: string[];
+    }[] = [];
+
+    for (const project of presentedProjects) {
+      const scores = await ctx.db
+        .query("scores")
+        .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
+        .collect();
+
+      const judgesWhoScored = scores.map((s) => s.judgeId);
+      const judgesWhoHaventScored = group.judgeIds.filter(
+        (judgeId) => !judgesWhoScored.includes(judgeId)
+      );
+
+      if (judgesWhoHaventScored.length > 0) {
+        const judgeDocsDirty = await Promise.all(
+          judgesWhoHaventScored.map((judgeId) => ctx.db.get(judgeId))
+        );
+        const judgeDocs = judgeDocsDirty.filter((judge) => judge !== null);
+
+        const judgeNames = judgeDocs.map(
+          (judge) => judge.name ?? "Unknown Judge"
+        );
+
+        incompleteProjects.push({
+          projectName: project.name,
+          missingJudges: judgeNames,
+        });
+      }
+    }
+
+    return {
+      hasIncompleteScores: incompleteProjects.length > 0,
+      incompleteProjects,
+    };
+  },
+});
+
+export const getAllGroupsPresentationStatus = query({
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user || user.role !== "director") {
+      return null;
+    }
+
+    const mentors = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", "mentor"))
+      .collect();
+
+    const groupStatuses = await Promise.all(
+      mentors.map(async (mentor) => {
+        if (!mentor.groupId) {
+          return {
+            mentorName: mentor.name || "Unknown Mentor",
+            totalProjects: 0,
+            presentedProjects: 0,
+            currentlyPresenting: null as string | null,
+            allComplete: false,
+          };
         }
 
-        return ctx.db.patch(judge._id, {
-          judgingSession: {
-            ...judge.judgingSession,
-            presentations: newPresentations,
-            currentProjectPresenting: undefined,
-          },
-        });
+        const group = await ctx.db.get(mentor.groupId);
+
+        if (!group) {
+          return {
+            mentorName: mentor.name || "Unknown Mentor",
+            totalProjects: 0,
+            presentedProjects: 0,
+            currentlyPresenting: null as string | null,
+            allComplete: false,
+          };
+        }
+
+        const totalProjects = group.projectDevpostIds.length;
+
+        const presentedCount = group.presentations.filter(
+          (p) => p.status === "completed"
+        ).length;
+
+        const currentPresentation = group.presentations.find(
+          (p) => p.status === "presenting"
+        );
+
+        return {
+          mentorName: mentor.name || "Unknown Mentor",
+          totalProjects,
+          presentedProjects: presentedCount,
+          currentlyPresenting: currentPresentation?.projectName || null,
+          allComplete: presentedCount === totalProjects && totalProjects > 0,
+        };
       })
     );
+
+    const allGroupsComplete = groupStatuses.every((g) => g.allComplete);
+
+    return {
+      groups: groupStatuses,
+      allGroupsComplete,
+    };
+  },
+});
+
+export const getGroupPresentations = query({
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user || user.role !== "mentor") {
+      return null;
+    }
+
+    if (!user.groupId) {
+      return null;
+    }
+
+    const group = await ctx.db.get(user.groupId);
+
+    if (!group) {
+      return null;
+    }
+
+    return group.presentations;
   },
 });

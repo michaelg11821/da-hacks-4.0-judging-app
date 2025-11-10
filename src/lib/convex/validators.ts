@@ -18,32 +18,27 @@ export const presentationSlotValidator = v.object({
 });
 
 export const scoreValidator = v.object({
+  projectId: v.id("projects"),
   judgeId: v.id("users"),
   criteria: v.record(v.string(), v.number()),
 });
 
 export const projectValidator = v.object({
+  groupId: v.id("groups"),
   devpostId: v.string(),
   name: v.string(),
   teamMembers: v.array(v.string()),
   devpostUrl: v.string(),
-  scores: v.array(scoreValidator),
   hasPresented: v.boolean(),
 });
 
-export const judgingSessionValidator = v.object({
-  projects: v.array(
-    v.object({
-      devpostId: v.string(),
-      name: v.string(),
-      teamMembers: v.array(v.string()),
-      devpostUrl: v.string(),
-    })
-  ),
-  judges: v.array(v.string()),
+export const groupValidator = v.object({
+  projectDevpostIds: v.array(v.string()),
+  judgeIds: v.array(v.id("users")),
+  judgeNames: v.array(v.string()),
   presentations: v.array(presentationSlotValidator),
-  isActive: v.boolean(),
   currentProjectPresenting: v.optional(v.string()),
+  mentorId: v.id("users"),
   mentorName: v.string(),
 });
 
@@ -56,11 +51,15 @@ export const userValidator = v.object({
   phoneVerificationTime: v.optional(v.number()),
   isAnonymous: v.optional(v.boolean()),
   role: v.string(),
-  judgingSession: v.optional(judgingSessionValidator),
+  groupId: v.optional(v.id("groups")),
 });
 
 export const hierarchyValidator = v.object({
   directors: v.array(v.string()),
   mentors: v.array(v.string()),
   judges: v.array(v.string()),
+});
+
+export const judgingStatusValidator = v.object({
+  active: v.boolean(),
 });

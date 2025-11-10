@@ -35,14 +35,25 @@ export const bulkInsertProjects = internalMutation({
       return { success: false, message: notDirectorMsg };
     }
 
-    const { devpostProjects } = args;
+    if (!user.groupId) {
+      return { success: false, message: "You are not assigned any judges." };
+    }
 
-    for (const project of devpostProjects) {
+    const group = await ctx.db.get(user.groupId);
+
+    if (!group) {
+      return {
+        success: false,
+        message: "Your group could not be found in the system.",
+      };
+    }
+
+    for (const project of args.devpostProjects) {
       await ctx.db.insert("projects", {
         devpostId: project.devpostId,
         devpostUrl: project.devpostUrl,
         name: project.name,
-        scores: project.scores,
+        groupId: group._id,
         teamMembers: project.teamMembers,
         hasPresented: false,
       });

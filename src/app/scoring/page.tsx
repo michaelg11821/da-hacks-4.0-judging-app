@@ -39,7 +39,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import JudgingIndicator from "../components/judging-indicator/judging-indicator";
+import JudgingIndicator from "../components/judging-indicator";
 import RoleGuard from "../components/role-guard";
 import {
   Dialog,
@@ -102,19 +102,21 @@ function ScoringPage() {
   });
 
   const currentUser = useQuery(api.user.currentUser);
+  const judgingStatus = useQuery(api.judging.getJudgingStatus);
   const groupProjects = useQuery(api.judging.getGroupProjects);
+  const myScores = useQuery(api.judging.getMyScores);
 
   const submitScore = useMutation(api.judging.submitScore);
 
   useEffect(() => {
-    if (currentUser && !currentUser.judgingSession) {
+    if (currentUser && !currentUser.groupId) {
       setShowNoProjectsDialog(true);
     }
 
-    if (currentUser?.judgingSession?.isActive === false) {
+    if (judgingStatus?.active === false) {
       setSelectedProject(null);
     }
-  }, [currentUser]);
+  }, [currentUser, judgingStatus?.active]);
 
   useEffect(() => {
     if (!currentUser?._id) return;
@@ -123,25 +125,29 @@ function ScoringPage() {
 
     if (groupProjects.projects.length === 0) return;
 
+    if (!myScores) return;
+
     const allPresented = groupProjects.projects.every((p) => p.hasPresented);
 
     if (!allPresented) {
       return;
     }
 
+    const scoredProjectIds = new Set(myScores.map((s) => s.projectId));
+
     const allScored = groupProjects.projects.every((project) =>
-      project.scores.some((score) => score.judgeId === currentUser._id)
+      scoredProjectIds.has(project._id)
     );
 
     if (allScored) {
       setShowCompletionDialog(true);
     }
-  }, [currentUser?._id, groupProjects]);
+  }, [currentUser?._id, groupProjects, myScores]);
 
   const handleProjectSelect = (devpostId: string) => {
-    if (!currentUser?.judgingSession) return;
+    if (!groupProjects?.projects) return;
 
-    const project = currentUser.judgingSession.projects.find(
+    const project = groupProjects.projects.find(
       (p) => p.devpostId === devpostId
     );
 
@@ -158,7 +164,7 @@ function ScoringPage() {
   const onSubmit = async (criteria: scoreFormSchemaType) => {
     if (!selectedProject) return;
 
-    if (!currentUser || !currentUser.judgingSession) return;
+    if (!currentUser || !currentUser.groupId) return;
 
     try {
       setSubmittingScore(true);
@@ -190,9 +196,7 @@ function ScoringPage() {
     return <Loading />;
   }
 
-  const judgingActive = currentUser?.judgingSession
-    ? currentUser?.judgingSession.isActive
-    : false;
+  const judgingActive = judgingStatus?.active ? judgingStatus.active : false;
 
   return (
     <RoleGuard role="judge">
@@ -263,7 +267,7 @@ function ScoringPage() {
                   <SelectValue placeholder="Choose a project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {currentUser?.judgingSession?.projects.map((project) => (
+                  {groupProjects?.projects.map((project) => (
                     <SelectItem
                       key={project.devpostId}
                       value={project.devpostId}

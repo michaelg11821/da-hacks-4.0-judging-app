@@ -6,11 +6,11 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 function JudgingStatus() {
-  const currentUser = useQuery(api.user.currentUser);
+  const judgingStatus = useQuery(api.judging.getJudgingStatus);
   const prevIsActiveRef = useRef<boolean | undefined>(undefined);
 
   useEffect(() => {
-    const isActive = currentUser?.judgingSession?.isActive;
+    const isActive = judgingStatus?.active;
 
     if (prevIsActiveRef.current === undefined) {
       prevIsActiveRef.current = isActive;
@@ -27,7 +27,7 @@ function JudgingStatus() {
 
       prevIsActiveRef.current = isActive;
     }
-  }, [currentUser]);
+  }, [judgingStatus?.active]);
 
   return null;
 }

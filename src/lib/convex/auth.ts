@@ -45,18 +45,6 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
               : undefined,
       });
 
-      if (isDirector) {
-        await ctx.db.patch(newUserId, {
-          judgingSession: {
-            projects: [],
-            judges: [],
-            presentations: [],
-            isActive: false,
-            mentorName: args.profile.name,
-          },
-        });
-      }
-
       return newUserId;
     },
   },

@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import JudgingIndicator from "../components/judging-indicator/judging-indicator";
+import JudgingIndicator from "../components/judging-indicator";
 import RoleGuard from "../components/role-guard";
 import {
   Dialog,
@@ -54,9 +54,11 @@ function PresentationsPage() {
     useState<boolean>(false);
 
   const currentUser = useQuery(api.user.currentUser);
+  const judgingStatus = useQuery(api.judging.getJudgingStatus);
   const incompleteScoresData = useQuery(
     api.presentations.checkIncompleteScores
   );
+  const groupPresentations = useQuery(api.presentations.getGroupPresentations);
   const groupProjects = useQuery(api.judging.getGroupProjects);
 
   const beginPresentation = useMutation(api.presentations.beginPresentation);
@@ -70,7 +72,7 @@ function PresentationsPage() {
   const manuallyStoppedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (currentUser && !currentUser.judgingSession) {
+    if (currentUser && !currentUser.groupId) {
       setShowNoProjectsDialog(true);
     }
   }, [currentUser]);
@@ -88,13 +90,12 @@ function PresentationsPage() {
   }, [groupProjects]);
 
   useEffect(() => {
-    if (!currentUser?.judgingSession) return;
+    if (!groupPresentations) return;
 
-    const currentPresentations = currentUser.judgingSession.presentations;
     const previousPresentations = previousPresentationsRef.current;
 
     if (previousPresentations) {
-      for (const currentSlot of currentPresentations) {
+      for (const currentSlot of groupPresentations) {
         const previousSlot = previousPresentations.find(
           (p) => p.projectDevpostId === currentSlot.projectDevpostId
         );
@@ -110,15 +111,15 @@ function PresentationsPage() {
       }
     }
 
-    previousPresentationsRef.current = currentPresentations;
-  }, [currentUser]);
+    previousPresentationsRef.current = groupPresentations;
+  }, [groupPresentations]);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!currentUser?.judgingSession) return;
+      if (!groupPresentations) return;
 
-      const newPresentations: PresentationSlot[] =
-        currentUser.judgingSession.presentations.map((slot) => {
+      const newPresentations: PresentationSlot[] = groupPresentations.map(
+        (slot) => {
           if (
             slot.status === "presenting" &&
             !slot.timerState.isPaused &&
@@ -139,16 +140,17 @@ function PresentationsPage() {
           }
 
           return slot;
-        });
+        }
+      );
 
       setPresentations(newPresentations);
     }, 100);
 
     return () => clearInterval(timer);
-  }, [currentUser]);
+  }, [groupPresentations]);
 
   const startPresentation = async (projectDevpostId: string) => {
-    if (!currentUser?.judgingSession) return;
+    if (!groupPresentations) return;
 
     if (incompleteScoresData && incompleteScoresData.hasIncompleteScores) {
       setShowIncompleteScoresDialog(true);
@@ -157,8 +159,7 @@ function PresentationsPage() {
 
     setStartLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
-    const sourceSlots =
-      presentations ?? currentUser.judgingSession.presentations;
+    const sourceSlots = presentations ?? groupPresentations;
 
     const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
       slot.projectDevpostId === projectDevpostId
@@ -174,17 +175,8 @@ function PresentationsPage() {
     );
 
     try {
-      const project = newPresentations.find(
-        (p) => p.projectDevpostId === projectDevpostId
-      );
-
-      if (!project) return toast.error("Could not find corresponding project.");
-
-      const projectName = project.projectName;
-
       const { success, message } = await beginPresentation({
-        newPresentations,
-        projectName,
+        projectDevpostId,
       });
 
       if (!success) {
@@ -194,10 +186,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
-
-      // return toast.success(message);
     } catch (err: unknown) {
-      console.error("error beginning presentation:", err);
+      console.error("error starting presentation:", err);
 
       return toast.error(genericErrMsg);
     } finally {
@@ -206,12 +196,11 @@ function PresentationsPage() {
   };
 
   const pausePresentation = async (projectDevpostId: string) => {
-    if (!currentUser?.judgingSession || !presentations) return;
+    if (!groupPresentations || !presentations) return;
 
     setPauseLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
-    const sourceSlots =
-      presentations ?? currentUser.judgingSession.presentations;
+    const sourceSlots = presentations ?? groupPresentations;
 
     const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
       slot.projectDevpostId === projectDevpostId
@@ -244,7 +233,7 @@ function PresentationsPage() {
       const projectName = project.projectName;
 
       const { success, message } = await haltPresentation({
-        newPresentations,
+        projectDevpostId,
         projectName,
       });
 
@@ -265,12 +254,11 @@ function PresentationsPage() {
   };
 
   const resumePresentation = async (projectDevpostId: string) => {
-    if (!currentUser?.judgingSession || !presentations) return;
+    if (!groupPresentations || !presentations) return;
 
     setResumeLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
-    const sourceSlots =
-      presentations ?? currentUser.judgingSession.presentations;
+    const sourceSlots = presentations ?? groupPresentations;
 
     const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
       slot.projectDevpostId === projectDevpostId
@@ -289,17 +277,8 @@ function PresentationsPage() {
     );
 
     try {
-      const project = newPresentations.find(
-        (p) => p.projectDevpostId === projectDevpostId
-      );
-
-      if (!project) return toast.error("Could not find corresponding project.");
-
-      const projectName = project.projectName;
-
       const { success, message } = await unhaltPresentation({
-        newPresentations,
-        projectName,
+        projectDevpostId,
       });
 
       if (!success) {
@@ -319,14 +298,13 @@ function PresentationsPage() {
   };
 
   const stopPresentation = async (projectDevpostId: string) => {
-    if (!currentUser?.judgingSession) return;
+    if (!groupPresentations) return;
 
     manuallyStoppedRef.current.add(projectDevpostId);
 
     setStopLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
-    const sourceSlots =
-      presentations ?? currentUser.judgingSession.presentations;
+    const sourceSlots = presentations ?? groupPresentations;
 
     const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
       slot.projectDevpostId === projectDevpostId
@@ -342,17 +320,7 @@ function PresentationsPage() {
     );
 
     try {
-      const project = newPresentations.find(
-        (p) => p.projectDevpostId === projectDevpostId
-      );
-
-      if (!project) throw new Error("Could not find corresponding project.");
-
-      const projectName = project.projectName;
-
       const { success, message } = await endPresentation({
-        newPresentations,
-        projectName,
         projectDevpostId,
       });
 
@@ -401,7 +369,12 @@ function PresentationsPage() {
     }
   };
 
-  if (currentUser === undefined || groupProjects === undefined)
+  if (
+    currentUser === undefined ||
+    groupPresentations === undefined ||
+    groupProjects === undefined ||
+    judgingStatus === undefined
+  )
     return <Loading />;
 
   return (
@@ -544,9 +517,9 @@ function PresentationsPage() {
               ) : (
                 presentations &&
                 presentations.map((slot) => {
-                  if (!currentUser?.judgingSession) return null;
+                  if (!groupProjects.projects) return null;
 
-                  const project = currentUser.judgingSession.projects.find(
+                  const project = groupProjects.projects.find(
                     (p) => p.devpostId === slot.projectDevpostId
                   );
 
@@ -628,7 +601,8 @@ function PresentationsPage() {
                                 size="lg"
                                 className="w-full sm:w-auto cursor-pointer select-none min-w-40"
                                 disabled={
-                                  !currentUser.judgingSession.isActive ||
+                                  (judgingStatus !== null &&
+                                    !judgingStatus.active) ||
                                   !!startLoading[slot.projectDevpostId] ||
                                   hasActivePresentation
                                 }

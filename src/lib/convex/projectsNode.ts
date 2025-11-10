@@ -1,8 +1,6 @@
 "use node";
 
 import { projectsLink } from "../constants/projects";
-import type { Project, Score } from "../types/judging";
-import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
 import { parse } from "node-html-parser";
@@ -29,8 +27,8 @@ async function getRemainingMembers(knownMembers: string[], devpostUrl: string) {
 }
 
 export const importFromDevpost = internalAction({
-  handler: async (ctx) => {
-    const devpostProjects: Project[] = [];
+  handler: async () => {
+    const devpostProjects = [];
 
     let pageNumber = 1;
     let moreProjects = true;
@@ -48,6 +46,7 @@ export const importFromDevpost = internalAction({
           success: false,
           message:
             "Failed to obtain projects from Devpost. There may be no projects submitted.",
+          projects: [],
         };
 
       const childParagraph = gallery.querySelector("p");
@@ -96,7 +95,6 @@ export const importFromDevpost = internalAction({
           devpostUrl,
           devpostId,
           name: name ? name.textContent.trim() : "",
-          scores: [] as Score[],
           hasPresented: false,
           teamMembers,
         });
@@ -105,23 +103,10 @@ export const importFromDevpost = internalAction({
       pageNumber += 1;
     }
 
-    const removalResult: { success: boolean; message: string } =
-      await ctx.runMutation(internal.projectsConvex.removeAllProjects);
-
-    if (!removalResult.success)
-      return { success: false, message: removalResult.message };
-
-    const insertionResult: { success: boolean; message: string } =
-      await ctx.runMutation(internal.projectsConvex.bulkInsertProjects, {
-        devpostProjects,
-      });
-
-    if (!insertionResult.success)
-      return { success: false, message: insertionResult.message };
-
     return {
       success: true,
-      message: "Successfully imported projects from Devpost.",
+      message: "Successfully scraped projects from Devpost.",
+      projects: devpostProjects,
     };
   },
 });

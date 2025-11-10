@@ -8,14 +8,15 @@ import { toast } from "sonner";
 
 function PresentationStatus() {
   const currentUser = useQuery(api.user.currentUser);
+  const groupPresentations = useQuery(api.presentations.getGroupPresentations);
   const previousPresentationsRef = useRef<PresentationSlot[] | undefined>(
     undefined
   );
 
   useEffect(() => {
-    if (!currentUser?.judgingSession) return;
+    if (!groupPresentations || !currentUser?.role) return;
 
-    const currentPresentations = currentUser.judgingSession.presentations;
+    const currentPresentations = groupPresentations;
     const previousPresentations = previousPresentationsRef.current;
     const isJudge = currentUser.role === "judge";
 
@@ -64,7 +65,7 @@ function PresentationStatus() {
     }
 
     previousPresentationsRef.current = currentPresentations;
-  }, [currentUser]);
+  }, [currentUser?.role, groupPresentations]);
 
   return null;
 }

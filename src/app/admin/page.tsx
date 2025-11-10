@@ -28,7 +28,7 @@ function AdminPage() {
     useState<boolean>(false);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
 
-  const currentUser = useQuery(api.user.currentUser);
+  const judgingStatus = useQuery(api.judging.getJudgingStatus);
   const groups = useQuery(api.judging.getGroups);
   const presentationStatus = useQuery(
     api.presentations.getAllGroupsPresentationStatus
@@ -56,10 +56,7 @@ function AdminPage() {
     setJudgingStatusChanging(true);
 
     try {
-      const { success, message } = await beginJudging({
-        cursor: null,
-        numItems: 100,
-      });
+      const { success, message } = await beginJudging();
 
       if (!success) {
         const errorMsg = message;
@@ -79,15 +76,12 @@ function AdminPage() {
     setJudgingStatusChanging(true);
 
     try {
-      const { success, message } = await endJudging({
-        cursor: null,
-        numItems: 100,
-      });
+      const { success, message } = await endJudging();
 
       if (!success) {
         const errorMsg = message;
 
-        throw new Error(errorMsg);
+        return toast.error(errorMsg);
       }
     } catch (err: unknown) {
       console.error("Error ending judging:", err);
@@ -107,7 +101,7 @@ function AdminPage() {
       if (!success) {
         const errorMsg = message;
 
-        throw new Error(errorMsg);
+        return toast.error(errorMsg);
       }
 
       return toast.success(message);
@@ -120,11 +114,11 @@ function AdminPage() {
     }
   };
 
-  if (currentUser === undefined) {
+  if (judgingStatus === undefined) {
     return <Loading />;
   }
 
-  const judgingActive = currentUser?.judgingSession?.isActive ?? false;
+  const judgingActive = judgingStatus?.active ?? false;
 
   return (
     <RoleGuard role="director">
@@ -219,17 +213,19 @@ function AdminPage() {
                             </div>
                             <div>
                               <p className="text-sm font-medium text-muted-foreground mb-2">
-                                Judges ({group.judges.length})
+                                Judges ({group.judgeIds.length})
                               </p>
                               <div className="space-y-1">
-                                {group.judges.map((judge, judgeIndex) => (
-                                  <div
-                                    key={`group-${groupIndex}-judge-${judgeIndex}`}
-                                    className="text-sm"
-                                  >
-                                    {judge.name}
-                                  </div>
-                                ))}
+                                {group.judgeNames.map(
+                                  (judgeName, judgeIndex) => (
+                                    <div
+                                      key={`group-${groupIndex}-judge-${judgeIndex}`}
+                                      className="text-sm"
+                                    >
+                                      {judgeName}
+                                    </div>
+                                  )
+                                )}
                               </div>
                             </div>
                           </div>

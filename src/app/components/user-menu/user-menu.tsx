@@ -28,6 +28,9 @@ export function UserMenu() {
   const { signOut } = useAuthActions();
 
   const currentUser = useQuery(api.user.currentUser);
+  const group = useQuery(api.judging.getGroupById, {
+    groupId: currentUser?.groupId,
+  });
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
 
   if (!currentUser) return null;
@@ -88,28 +91,26 @@ export function UserMenu() {
           <DialogHeader>
             <DialogTitle>My group</DialogTitle>
             <DialogDescription>
-              {currentUser.judgingSession
+              {group
                 ? "Here are the details of your group."
                 : "You are not assigned to a group yet."}
             </DialogDescription>
           </DialogHeader>
 
-          {currentUser.judgingSession && (
+          {group && (
             <div className="space-y-3">
               <div>
                 <p className="text-sm text-muted-foreground">Mentor</p>
-                <p className="text-sm font-medium">
-                  {currentUser.judgingSession.mentorName}
-                </p>
+                <p className="text-sm font-medium">{group.mentorName}</p>
               </div>
 
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Judges</p>
                 <ul className="list-disc list-inside text-sm">
-                  {currentUser.judgingSession.judges.length === 0 ? (
+                  {group.judgeNames.length === 0 ? (
                     <li>No judges assigned.</li>
                   ) : (
-                    currentUser.judgingSession.judges.map((judgeName) => (
+                    group.judgeNames.map((judgeName) => (
                       <li key={judgeName}>{judgeName}</li>
                     ))
                   )}

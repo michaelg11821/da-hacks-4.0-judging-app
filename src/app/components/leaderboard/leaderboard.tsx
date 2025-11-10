@@ -24,19 +24,19 @@ const criteriaLabels: CriteriaLabels = {
 };
 
 function Leaderboard() {
-  const projects = useQuery(api.projectsConvex.listAllProjects);
+  const projectsWithScores = useQuery(api.judging.getAllScores);
 
-  if (projects === undefined) {
+  if (projectsWithScores === undefined) {
     return <Loading />;
   }
 
-  if (projects === null) {
-    toast.error("Error getting projects. Please refresh.");
+  if (projectsWithScores === null) {
+    toast.error("Error getting scores. Please refresh.");
 
     return null;
   }
 
-  const projectScores = projects.map((project) => {
+  const projectScores = projectsWithScores.map((project) => {
     if (project.scores.length === 0) {
       return { project, averageScore: 0, totalJudges: 0, breakdown: null };
     }
