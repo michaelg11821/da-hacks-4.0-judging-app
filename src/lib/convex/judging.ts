@@ -313,6 +313,15 @@ export const beginJudging = mutation({
         return { success: false, message: notDirectorMsg };
       }
 
+      const groups = await getGroupsHelper(ctx);
+
+      if (!groups || groups.length === 0) {
+        return {
+          success: false,
+          message: "Please create the judge groups before starting judging.",
+        };
+      }
+
       await ctx.db.patch(process.env.JUDGING_STATUS_ID as Id<"judgingStatus">, {
         active: true,
       });
