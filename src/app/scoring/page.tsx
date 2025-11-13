@@ -109,6 +109,8 @@ function ScoringPage() {
   const [showPresentationEndedDialog, setShowPresentationEndedDialog] =
     useState<boolean>(false);
   const [endedProjectName, setEndedProjectName] = useState<string>("");
+  const [pendingPresentationEndedName, setPendingPresentationEndedName] =
+    useState<string | null>(null);
 
   const previousPresentingRef = useRef<string | null | undefined>(undefined);
 
@@ -145,16 +147,38 @@ function ScoringPage() {
     const previousPresenting = previousPresentingRef.current;
 
     if (
+      pendingPresentationEndedName &&
+      currentProjectPresenting === pendingPresentationEndedName
+    ) {
+      setPendingPresentationEndedName(null);
+    }
+
+    if (
       previousPresenting &&
       typeof previousPresenting === "string" &&
       currentProjectPresenting === null
     ) {
-      setEndedProjectName(previousPresenting);
-      setShowPresentationEndedDialog(true);
+      setPendingPresentationEndedName(previousPresenting);
     }
 
     previousPresentingRef.current = currentProjectPresenting;
-  }, [currentProjectPresenting]);
+  }, [currentProjectPresenting, pendingPresentationEndedName]);
+
+  useEffect(() => {
+    if (!pendingPresentationEndedName) {
+      return;
+    }
+
+    const project = groupProjects?.projects.find(
+      (p) => p.name === pendingPresentationEndedName
+    );
+
+    if (project?.hasPresented) {
+      setEndedProjectName(pendingPresentationEndedName);
+      setShowPresentationEndedDialog(true);
+      setPendingPresentationEndedName(null);
+    }
+  }, [groupProjects?.projects, pendingPresentationEndedName]);
 
   useEffect(() => {
     if (!currentUser?._id) return;
