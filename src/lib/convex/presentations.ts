@@ -155,6 +155,12 @@ export const beginPresentation = mutation({
   },
 });
 
+export const getServerTime = query({
+  handler: async () => {
+    return Date.now();
+  },
+});
+
 export const autoCompletePresentation = internalMutation({
   args: {
     groupId: v.id("groups"),

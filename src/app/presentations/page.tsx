@@ -60,6 +60,7 @@ function PresentationsPage() {
   );
   const groupPresentations = useQuery(api.presentations.getGroupPresentations);
   const groupProjects = useQuery(api.judging.getGroupProjects);
+  const serverNow = useQuery(api.presentations.getServerTime);
 
   const beginPresentation = useMutation(api.presentations.beginPresentation);
   const endPresentation = useMutation(api.presentations.endPresentation);
@@ -70,6 +71,13 @@ function PresentationsPage() {
     undefined
   );
   const manuallyStoppedRef = useRef<Set<string>>(new Set());
+  const [clockSkewMs, setClockSkewMs] = useState<number>(0);
+
+  useEffect(() => {
+    if (serverNow !== undefined) {
+      setClockSkewMs(serverNow - Date.now());
+    }
+  }, [serverNow]);
 
   useEffect(() => {
     if (currentUser && !currentUser.groupId) {
@@ -125,8 +133,9 @@ function PresentationsPage() {
             !slot.timerState.isPaused &&
             slot.timerState.startedAt
           ) {
+            const nowMs = Date.now() + clockSkewMs;
             const elapsed = Math.floor(
-              (Date.now() - slot.timerState.startedAt) / 1000
+              (nowMs - slot.timerState.startedAt) / 1000
             );
             const remaining = Math.max(0, slot.duration * 60 - elapsed);
 
@@ -147,7 +156,7 @@ function PresentationsPage() {
     }, 100);
 
     return () => clearInterval(timer);
-  }, [groupPresentations]);
+  }, [groupPresentations, clockSkewMs]);
 
   const startPresentation = async (projectDevpostId: string) => {
     if (!groupPresentations) return;
