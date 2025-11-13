@@ -113,7 +113,7 @@ export const beginPresentation = mutation({
               ...slot,
               status: "presenting" as const,
               timerState: {
-                remainingSeconds: slot.duration * 60,
+                ...slot.timerState,
                 isPaused: false,
                 startedAt: now,
               },
