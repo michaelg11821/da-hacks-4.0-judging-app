@@ -36,10 +36,11 @@ import {
   Send,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import JudgingIndicator from "../components/judging-indicator";
+import PresentingIndicator from "../components/presenting-indicator";
 import RoleGuard from "../components/role-guard";
 import {
   Dialog,
@@ -95,6 +96,11 @@ function ScoringPage() {
   const [submittingScore, setSubmittingScore] = useState<boolean>(false);
   const [showCompletionDialog, setShowCompletionDialog] =
     useState<boolean>(false);
+  const [showPresentationEndedDialog, setShowPresentationEndedDialog] =
+    useState<boolean>(false);
+  const [endedProjectName, setEndedProjectName] = useState<string>("");
+
+  const previousPresentingRef = useRef<string | null | undefined>(null);
 
   const form = useForm<scoreFormSchemaType>({
     resolver: zodResolver(scoreFormSchema),
@@ -105,6 +111,9 @@ function ScoringPage() {
   const judgingStatus = useQuery(api.judging.getJudgingStatus);
   const groupProjects = useQuery(api.judging.getGroupProjects);
   const myScores = useQuery(api.judging.getMyScores);
+  const currentProjectPresenting = useQuery(
+    api.judging.getGroupProjectPresenting
+  );
 
   const submitScore = useMutation(api.judging.submitScore);
 
@@ -117,6 +126,29 @@ function ScoringPage() {
       setSelectedProject(null);
     }
   }, [currentUser, judgingStatus?.active]);
+
+  useEffect(() => {
+    if (!groupProjects?.projects) return;
+
+    const previousPresenting = previousPresentingRef.current;
+
+    if (
+      previousPresenting &&
+      currentProjectPresenting === null &&
+      previousPresenting !== null
+    ) {
+      const project = groupProjects.projects.find(
+        (p) => p.devpostId === previousPresenting
+      );
+
+      if (project) {
+        setEndedProjectName(project.name);
+        setShowPresentationEndedDialog(true);
+      }
+    }
+
+    previousPresentingRef.current = currentProjectPresenting;
+  }, [currentProjectPresenting, groupProjects?.projects]);
 
   useEffect(() => {
     if (!currentUser?._id) return;
@@ -248,8 +280,34 @@ function ScoringPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Dialog
+          open={showPresentationEndedDialog}
+          onOpenChange={(open) => {
+            if (!open) setShowPresentationEndedDialog(false);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <CheckCircle2 className="h-6 w-6 text-blue-600" />
+                Presentation Ended
+              </DialogTitle>
+              <DialogDescription className="text-base pt-2">
+                The presentation for {endedProjectName} has ended. Please submit
+                your score for this project.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">OK</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <div className="max-w-4xl mx-auto space-y-8">
           <JudgingIndicator />
+          <PresentingIndicator />
 
           <Card>
             <CardHeader>

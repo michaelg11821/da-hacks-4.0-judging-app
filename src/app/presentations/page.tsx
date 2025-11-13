@@ -186,6 +186,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
+
+      return toast.success(message);
     } catch (err: unknown) {
       console.error("error starting presentation:", err);
 
@@ -244,6 +246,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
+
+      return toast.info(message);
     } catch (err: unknown) {
       console.error("error pausing presentation:", err);
 
@@ -288,6 +292,8 @@ function PresentationsPage() {
       }
 
       setPresentations(newPresentations);
+
+      return toast.info(message);
     } catch (err: unknown) {
       console.error("error resuming presentation:", err);
 

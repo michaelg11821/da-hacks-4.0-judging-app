@@ -522,7 +522,6 @@ export const getAllScores = query({
     if (!user) return null;
 
     const projects = await ctx.db.query("projects").collect();
-
     const allScores = await ctx.db.query("scores").collect();
 
     const scoresByProject = allScores.reduce(
@@ -542,5 +541,38 @@ export const getAllScores = query({
     }));
 
     return projectsWithScores;
+  },
+});
+
+export const getGroupProjectPresenting = query({
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user) return null;
+
+    if (user.role !== "judge") {
+      return null;
+    }
+
+    if (!user.groupId) {
+      return null;
+    }
+
+    const group = await ctx.db.get(user.groupId);
+
+    if (!group) return null;
+
+    if (!group.currentProjectPresenting) return null;
+
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_devpostId", (q) =>
+        q.eq("devpostId", group.currentProjectPresenting!)
+      )
+      .first();
+
+    if (!project) return null;
+
+    return project.name;
   },
 });
