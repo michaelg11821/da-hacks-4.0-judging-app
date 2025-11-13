@@ -67,9 +67,10 @@ export const createGroups = action({
       const assignedJudgeNames: string[] = [];
 
       for (let i = 0; i < judges.length; i++) {
-        if (i % mentors.length === mentorIndex)
+        if (i % mentors.length === mentorIndex) {
           assignedJudgeIds.push(judges[i]._id);
-        assignedJudgeNames.push(judges[i].name ?? "Unknown Judge");
+          assignedJudgeNames.push(judges[i].name ?? "Unknown Judge");
+        }
       }
 
       return {
