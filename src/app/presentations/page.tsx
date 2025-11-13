@@ -167,7 +167,8 @@ function PresentationsPage() {
             ...slot,
             status: "presenting",
             timerState: {
-              ...slot.timerState,
+              remainingSeconds: slot.duration * 60,
+              isPaused: false,
               startedAt: new Date().getTime(),
             },
           }
