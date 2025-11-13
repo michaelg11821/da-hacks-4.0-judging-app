@@ -13,7 +13,8 @@ const schema = defineSchema({
   ...authTables,
   users: defineTable(userValidator)
     .index("email", ["email"])
-    .index("by_role", ["role"]),
+    .index("by_role", ["role"])
+    .index("by_groupId", ["groupId"]),
   hierarchy: defineTable(hierarchyValidator),
   projects: defineTable(projectValidator)
     .index("by_devpostId", ["devpostId"])

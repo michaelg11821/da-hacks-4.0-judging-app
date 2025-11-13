@@ -62,6 +62,13 @@ export const createGroups = action({
       };
     }
 
+    const removalGroupsResult: { success: boolean; message: string } =
+      await ctx.runMutation(internal.judging.removeAllGroups);
+
+    if (!removalGroupsResult.success) {
+      return { success: false, message: removalGroupsResult.message };
+    }
+
     const groupsMembers = mentors.map((mentor, mentorIndex) => {
       const assignedJudgeIds: Id<"users">[] = [];
       const assignedJudgeNames: string[] = [];
@@ -247,6 +254,31 @@ async function getGroupsHelper(ctx: QueryCtx) {
 export const getGroups = query({
   handler: async (ctx) => {
     return await getGroupsHelper(ctx);
+  },
+});
+
+export const removeAllGroups = internalMutation({
+  handler: async (ctx) => {
+    const groups = await ctx.db.query("groups").collect();
+    for (const group of groups) {
+      await ctx.db.delete(group._id);
+    }
+
+    const usersWithGroups = await ctx.db
+      .query("users")
+      .withIndex("by_groupId")
+      .collect();
+    for (const user of usersWithGroups) {
+      await ctx.db.patch(user._id, { groupId: undefined });
+    }
+
+    const scores = await ctx.db.query("scores").collect();
+
+    for (const score of scores) {
+      await ctx.db.delete(score._id);
+    }
+
+    return { success: true, message: "All groups removed." };
   },
 });
 
