@@ -114,7 +114,9 @@ function PresentationsPage() {
           currentSlot.status === "completed" &&
           !manuallyStoppedRef.current.has(currentSlot.projectDevpostId)
         ) {
-          toast.success(`Presentation for ${currentSlot.projectName} ended.`);
+          toast.success(
+            `Presentation for ${currentSlot.projectName} ended. Please tell your judges to submit scores for ${currentSlot.projectName}`
+          );
         }
       }
     }
