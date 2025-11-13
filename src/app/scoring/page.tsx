@@ -100,7 +100,7 @@ function ScoringPage() {
     useState<boolean>(false);
   const [endedProjectName, setEndedProjectName] = useState<string>("");
 
-  const previousPresentingRef = useRef<string | null | undefined>(null);
+  const previousPresentingRef = useRef<string | null | undefined>(undefined);
 
   const form = useForm<scoreFormSchemaType>({
     resolver: zodResolver(scoreFormSchema),
@@ -128,27 +128,23 @@ function ScoringPage() {
   }, [currentUser, judgingStatus?.active]);
 
   useEffect(() => {
-    if (!groupProjects?.projects) return;
+    if (currentProjectPresenting === undefined) {
+      return;
+    }
 
     const previousPresenting = previousPresentingRef.current;
 
     if (
       previousPresenting &&
-      currentProjectPresenting === null &&
-      previousPresenting !== null
+      typeof previousPresenting === "string" &&
+      currentProjectPresenting === null
     ) {
-      const project = groupProjects.projects.find(
-        (p) => p.devpostId === previousPresenting
-      );
-
-      if (project) {
-        setEndedProjectName(project.name);
-        setShowPresentationEndedDialog(true);
-      }
+      setEndedProjectName(previousPresenting);
+      setShowPresentationEndedDialog(true);
     }
 
     previousPresentingRef.current = currentProjectPresenting;
-  }, [currentProjectPresenting, groupProjects?.projects]);
+  }, [currentProjectPresenting]);
 
   useEffect(() => {
     if (!currentUser?._id) return;
