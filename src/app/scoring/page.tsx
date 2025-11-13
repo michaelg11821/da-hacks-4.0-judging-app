@@ -8,13 +8,6 @@ import {
   CardTitle,
 } from "@/app/components/ui/card";
 import { Label } from "@/app/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/app/components/ui/select";
 import { genericErrMsg } from "@/lib/constants/errorMessages";
 import { criteria } from "@/lib/constants/judging";
 import { api } from "@/lib/convex/_generated/api";
@@ -24,12 +17,15 @@ import type {
   Criterions,
   Project,
 } from "@/lib/types/judging";
+import { cn } from "@/lib/utils";
 import { scoreFormSchema, type scoreFormSchemaType } from "@/lib/zod/forms";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "convex/react";
 import {
   Award,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ExternalLink,
   Info,
   Loader2,
@@ -42,6 +38,14 @@ import { toast } from "sonner";
 import JudgingIndicator from "../components/judging-indicator";
 import PresentingIndicator from "../components/presenting-indicator";
 import RoleGuard from "../components/role-guard";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "../components/ui/command";
 import {
   Dialog,
   DialogClose,
@@ -60,6 +64,11 @@ import {
   FormMessage,
 } from "../components/ui/form";
 import Loading from "../components/ui/loading";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../components/ui/popover";
 import { Slider } from "../components/ui/slider";
 
 const criteriaLabels: CriteriaLabels = {
@@ -91,6 +100,7 @@ function ScoringPage() {
     Omit<Project, "hasPresented">,
     "scores"
   > | null>(null);
+  const [showProjectSelect, setShowProjectSelect] = useState<boolean>(false);
   const [showNoProjectsDialog, setShowNoProjectsDialog] =
     useState<boolean>(false);
   const [submittingScore, setSubmittingScore] = useState<boolean>(false);
@@ -312,25 +322,56 @@ function ScoringPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Select
-                value={selectedProject?.devpostId}
-                onValueChange={handleProjectSelect}
-                disabled={!judgingActive}
+              <Popover
+                open={showProjectSelect}
+                onOpenChange={setShowProjectSelect}
               >
-                <SelectTrigger className="w-full sm:w-70">
-                  <SelectValue placeholder="Choose a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {groupProjects?.projects.map((project) => (
-                    <SelectItem
-                      key={project.devpostId}
-                      value={project.devpostId}
-                    >
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="w-full justify-between sm:w-70"
+                    disabled={!judgingActive}
+                  >
+                    {selectedProject?.name ?? "Select project..."}
+                    <ChevronDown className="opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full sm:w-70 p-0">
+                  <Command>
+                    <CommandInput
+                      placeholder="Search project..."
+                      className="h-9"
+                    />
+                    <CommandList>
+                      <CommandEmpty>Project not found.</CommandEmpty>
+                      <CommandGroup>
+                        {groupProjects?.projects.map((project) => (
+                          <CommandItem
+                            key={project.devpostId}
+                            value={project.name}
+                            onSelect={() => {
+                              setShowProjectSelect(false);
+
+                              return handleProjectSelect(project.devpostId);
+                            }}
+                          >
+                            {project.name}
+                            <Check
+                              className={cn(
+                                "ml-auto text-primary transition-opacity",
+                                selectedProject?.devpostId === project.devpostId
+                                  ? "opacity-100"
+                                  : "opacity-0"
+                              )}
+                            />
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </CardContent>
           </Card>
 
