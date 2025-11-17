@@ -72,10 +72,10 @@ import {
 import { Slider } from "../components/ui/slider";
 
 const criteriaLabels: CriteriaLabels = {
-  applicationFeasibility: "Application Feasibility (25%)",
+  applicationFeasibility: "Usefulness & Impact (25%)",
   functionalityQuality: "Functionality & Quality (20%)",
-  creativityInnovation: "Creativity & Innovation (25%)",
-  technicalComplexity: "Technical Complexity (20%)",
+  creativityInnovation: "Creativity & Originality (25%)",
+  technicalComplexity: "Technical Implementation (20%)",
   presentation: "Presentation (10%)",
 };
 
