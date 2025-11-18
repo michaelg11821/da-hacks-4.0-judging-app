@@ -170,6 +170,9 @@ function PresentationsPage() {
 
     setStartLoading((prev) => ({ ...prev, [projectDevpostId]: true }));
 
+    const clientNow = Date.now();
+    const approxServerStartedAt = clientNow + clockSkewMs;
+
     const sourceSlots = presentations ?? groupPresentations;
 
     const newPresentations: PresentationSlot[] = sourceSlots.map((slot) =>
@@ -180,7 +183,7 @@ function PresentationsPage() {
             timerState: {
               remainingSeconds: slot.duration * 60,
               isPaused: false,
-              startedAt: new Date().getTime(),
+              startedAt: approxServerStartedAt,
             },
           }
         : slot
@@ -189,6 +192,7 @@ function PresentationsPage() {
     try {
       const { success, message } = await beginPresentation({
         projectDevpostId,
+        approxStartedAtMs: approxServerStartedAt,
       });
 
       if (!success) {

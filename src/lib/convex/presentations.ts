@@ -8,6 +8,7 @@ import { getCurrentUser } from "./user";
 export const beginPresentation = mutation({
   args: {
     projectDevpostId: v.string(),
+    approxStartedAtMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     try {
@@ -106,7 +107,16 @@ export const beginPresentation = mutation({
         }
       }
 
-      const now = Date.now();
+      const serverNow = Date.now();
+      let startedAt =
+        args.approxStartedAtMs !== undefined
+          ? args.approxStartedAtMs
+          : serverNow;
+
+      if (startedAt > serverNow) {
+        startedAt = serverNow;
+      }
+
       const updatedPresentations = group.presentations.map((slot) =>
         slot.projectDevpostId === args.projectDevpostId
           ? {
@@ -115,7 +125,7 @@ export const beginPresentation = mutation({
               timerState: {
                 remainingSeconds: slot.duration * 60,
                 isPaused: false,
-                startedAt: now,
+                startedAt,
               },
             }
           : slot
@@ -127,8 +137,13 @@ export const beginPresentation = mutation({
         presentations: updatedPresentations,
       });
 
-      const durationMs = defaultDurationMinutes * 60 * 1000;
-      const delayMs = Math.max(0, now + durationMs - Date.now() + 500);
+      const currentSlot = updatedPresentations.find(
+        (p) => p.projectDevpostId === args.projectDevpostId
+      );
+
+      const durationMinutes = currentSlot?.duration ?? defaultDurationMinutes;
+      const durationMs = durationMinutes * 60 * 1000;
+      const delayMs = Math.max(0, startedAt + durationMs - Date.now() + 500);
 
       await ctx.scheduler.runAfter(
         delayMs,
