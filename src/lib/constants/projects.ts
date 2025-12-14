@@ -1,1 +1,1 @@
-export const projectsLink = "https://dahacks3-5.devpost.com/project-gallery";
+export const projectsLink = "https://dahacks4.devpost.com/project-gallery";
